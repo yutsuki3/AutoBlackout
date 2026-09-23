@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-09-24
+
 ### Added
 - `power:` log lines for every sleep / wake / screen sleep / screen wake notification, with the panel
   and display state at that moment (log-only, no behavior change). `evaluate` only logs when the
