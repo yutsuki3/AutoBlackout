@@ -131,7 +131,12 @@ enum HostInfo {
 /// Where state is stored across process boundaries, so a separate `--restore` process can read the
 /// same values. Uses a fixed suite name for that reason.
 final class UserDefaultsStateStore: DisplayStateStore {
-    private let defaults = UserDefaults(suiteName: "io.github.yutsuki3.AutoBlackout") ?? .standard
+    private let defaults: UserDefaults
+
+    /// - Parameter defaults: injectable for tests; production uses the shared suite.
+    init(defaults: UserDefaults = UserDefaults(suiteName: "io.github.yutsuki3.AutoBlackout") ?? .standard) {
+        self.defaults = defaults
+    }
 
     var lastKnownBuiltInID: CGDirectDisplayID? {
         get { read("lastKnownBuiltInID") }
@@ -165,17 +170,20 @@ final class FileEventLogger: EventLogger {
     static let directory = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Logs/AutoBlackout", isDirectory: true)
 
+    static let maxLogBytes = 2 * 1024 * 1024
+
     private let osLog = Logger(subsystem: "io.github.yutsuki3.AutoBlackout", category: "recovery")
     private let url: URL?
     private let formatter = ISO8601DateFormatter()
     /// Also echoes to stdout when true (used by `--restore`).
     private let echo: Bool
 
-    init(echo: Bool = false) {
+    /// - Parameter directory: injectable for tests; production uses `~/Library/Logs/AutoBlackout`.
+    init(echo: Bool = false, directory: URL = FileEventLogger.directory) {
         self.echo = echo
         do {
-            try FileManager.default.createDirectory(at: Self.directory, withIntermediateDirectories: true)
-            url = Self.directory.appendingPathComponent("recovery.log")
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            url = directory.appendingPathComponent("recovery.log")
         } catch {
             url = nil
         }
@@ -188,7 +196,7 @@ final class FileEventLogger: EventLogger {
         guard let url else { return }
 
         if let size = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? Int,
-           size >= 2 * 1024 * 1024 {
+           size >= Self.maxLogBytes {
             let previous = url.appendingPathExtension("previous")
             try? FileManager.default.removeItem(at: previous)
             try? FileManager.default.moveItem(at: url, to: previous)

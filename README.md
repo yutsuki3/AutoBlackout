@@ -117,7 +117,11 @@ swift test
 brew install swiftlint && swiftlint lint --strict   # CI runs this too
 ```
 
-Tests never touch a real display.
+Tests never touch a real display, the real log directory, or the app's real saved state. Only the
+logic that can be exercised safely is covered: `AutoBlackoutCoreTests` (state machine, host
+verification) and `AutoBlackoutTests` (logger, state store, diagnostics, host info). The private-API
+call itself (`PrivateDisplayAPI.setEnabled`) is deliberately not unit-tested, since on a verified Mac
+it would really disable the panel; it's covered by `--verify-restore` on hardware instead.
 
 ## Project layout
 

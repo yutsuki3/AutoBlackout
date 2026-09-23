@@ -5,6 +5,16 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- `AutoBlackoutTests`: unit tests for the executable target (log file writing and rotation, the
+  cross-process state store, `--diagnose` formatting, host info, the main-queue scheduler). They
+  use a temporary directory and a throwaway `UserDefaults` suite, and never touch a real display or
+  the real log/state.
+
+### Changed
+- `FileEventLogger` and `UserDefaultsStateStore` accept an injectable directory / `UserDefaults`
+  (defaults unchanged).
+
 ## [1.1.0] - 2026-09-23
 
 ### Added
