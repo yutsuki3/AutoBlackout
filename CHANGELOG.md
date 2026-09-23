@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-23
+
 ### Added
 - SwiftLint (`.swiftlint.yml`), enforced in CI with `--strict`.
 - Re-verification notice: when a macOS update changes the build of a Mac model that was verified
