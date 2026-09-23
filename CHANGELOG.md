@@ -5,6 +5,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- With "Auto-OFF on external monitor connect" on, waking from sleep turned the built-in display off
+  again. A system sleep/wake drops the external display out of the online list and brings it back,
+  and that reappearance was treated as a new connection. The controller now remembers which external
+  displays were connected going to sleep and treats the same display returning within 60 seconds of
+  waking as resuming, not connecting. A different display, or the same one replugged after the window
+  (or after an unplug/replug once it has resumed), still auto-OFFs.
+
 ## [1.2.1] - 2026-09-24
 
 ### Added

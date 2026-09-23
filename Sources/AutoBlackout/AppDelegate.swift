@@ -115,19 +115,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         monitor.start()
 
         // Right after opening the lid or waking from sleep, the panel has just been re-powered, so
-        // evaluate immediately instead of waiting for the next poll.
+        // evaluate immediately instead of waiting for the next poll. Sleep and wake are also
+        // reported to the controller: a system sleep/wake drops the external display out of the
+        // online list, and its return must not be mistaken for a new connection (auto-OFF).
         let center = NSWorkspace.shared.notificationCenter
-        for name in [NSWorkspace.didWakeNotification, NSWorkspace.screensDidWakeNotification] {
-            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
-                self?.controller.logPowerEvent(note.name.rawValue)
-                self?.controller.evaluate(reason: note.name.rawValue)
-            }
-        }
-        // Sleep notifications are only logged (no state change), so a sleep/wake cycle can be
-        // reconstructed from the log: what the panel looked like going to sleep and coming back.
         for name in [NSWorkspace.willSleepNotification, NSWorkspace.screensDidSleepNotification] {
             center.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
-                self?.controller.logPowerEvent(note.name.rawValue)
+                self?.controller.handlePowerEvent(note.name.rawValue, transition: .sleep)
+            }
+        }
+        for name in [NSWorkspace.didWakeNotification, NSWorkspace.screensDidWakeNotification] {
+            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
+                self?.controller.handlePowerEvent(note.name.rawValue, transition: .wake)
+                self?.controller.evaluate(reason: note.name.rawValue)
             }
         }
 

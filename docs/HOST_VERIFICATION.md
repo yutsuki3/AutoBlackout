@@ -56,6 +56,12 @@ Other measures baked in:
   notification itself was tried and abandoned — the external's sleep sometimes becomes visible
   before the notification arrives, causing a premature restore. Auto-OFF only fires when a new
   external display connects; waking from sleep doesn't count as a new connection.
+  A full system sleep/wake is subtler: every real display drops out of the online list (leaving only
+  a headless fallback) and the external comes back a moment after the wake notifications, which used
+  to look like a new connection and auto-turned the built-in display off after every wake. The
+  controller now records which external displays were connected when going to sleep and treats those
+  same displays returning within 60 seconds of waking as resuming, not connecting (confirmed from a
+  real `power:` log).
 - The built-in panel is treated as "ON" while it's merely display-asleep (it's still in the online
   list), so idle sleep with no external display doesn't trigger a restore attempt.
 - If an enable request was accepted but never applied (WindowServer logs `Failed to plug display 1`)

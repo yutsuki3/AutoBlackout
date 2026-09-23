@@ -49,6 +49,10 @@ public final class BlackoutController {
     public static let failuresBetweenPowerCycles = 20
     /// The cap on automatic power cycles per restore attempt, so the screen doesn't keep flickering.
     public static let maxPowerCycles = 2
+    /// How long after waking an external display that was connected before sleeping counts as
+    /// "resuming" rather than a new connection. USB-C monitors drop out of the online list during a
+    /// system sleep/wake and can take a while to come back.
+    public static let sleepResumeWindow: TimeInterval = 60
     /// How long to wait after starting a power cycle before sending the next enable request.
     /// Sending it while displays are asleep blocks for up to 10s waiting on WindowServer to
     /// reconfigure and then fails with 1014, which also delays waking the screens (confirmed on
@@ -76,6 +80,13 @@ public final class BlackoutController {
     /// connected while asleep). Auto-OFF only fires on the "zero -> some" transition; waking from
     /// sleep doesn't count as a new connection.
     private var previousHadExternal: Bool?
+    /// The external displays that were connected when the system (or its screens) went to sleep. On
+    /// wake, one of these reappearing is the same monitor coming back, not a new connection, even
+    /// though it left the online list in between (real hardware: every real display drops out during
+    /// a system sleep/wake, leaving only a headless fallback).
+    private var externalsBeforeSleep: Set<CGDirectDisplayID>?
+    /// When the wake-resume allowance ends. `nil` while still asleep (no wake seen yet).
+    private var sleepResumeDeadline: Date?
     /// A newly connected external display is waiting for auto-OFF. If it was asleep when it
     /// connected, this waits until it wakes.
     private var autoDisablePending = false
@@ -180,7 +191,13 @@ public final class BlackoutController {
         // cycle on the M3 (and the external's sleep has been observed to appear before the sleep
         // notification itself, on real hardware).
         let hasExternal = externalsAtDisable.map { !present.isDisjoint(with: $0) } ?? !present.isEmpty
-        if previousHadExternal == false, !present.isEmpty { autoDisablePending = true }
+        if previousHadExternal == false, !present.isEmpty {
+            if resumesAfterSleep(present) {
+                logger.log("external display \(sorted(present)) is back after sleep; not a new connection")
+            } else {
+                autoDisablePending = true
+            }
+        }
         if present.isEmpty || !isAutoModeEnabled { autoDisablePending = false }
         previousHadExternal = !present.isEmpty
         if hasExternal {
@@ -244,6 +261,45 @@ public final class BlackoutController {
         }
 
         onStateChange?()
+    }
+
+    public enum PowerTransition {
+        case sleep
+        case wake
+    }
+
+    /// Handles a sleep/wake notification: logs it with the panel state, and remembers which external
+    /// displays were connected going to sleep so that their return on wake isn't mistaken for a new
+    /// connection (which would auto-OFF the built-in display after every wake). Sends no request.
+    public func handlePowerEvent(_ name: String, transition: PowerTransition) {
+        logPowerEvent(name)
+        switch transition {
+        case .sleep:
+            let present = DisplayLogic.presentExternals(in: system.snapshot())
+            // A second sleep notification arrives after the externals are already gone; keep the
+            // first record instead of overwriting it with nothing.
+            if !present.isEmpty {
+                externalsBeforeSleep = present
+                sleepResumeDeadline = nil
+            }
+        case .wake:
+            if externalsBeforeSleep != nil { sleepResumeDeadline = now().addingTimeInterval(Self.sleepResumeWindow) }
+        }
+    }
+
+    /// Whether `present` is the same external display(s) coming back after a sleep. Consumes the
+    /// record when it is, so a real unplug/replug right afterwards still counts as a new connection.
+    private func resumesAfterSleep(_ present: Set<CGDirectDisplayID>) -> Bool {
+        guard let before = externalsBeforeSleep else { return false }
+        if let deadline = sleepResumeDeadline, now() >= deadline {
+            externalsBeforeSleep = nil
+            sleepResumeDeadline = nil
+            return false
+        }
+        guard !present.isDisjoint(with: before) else { return false }
+        externalsBeforeSleep = nil
+        sleepResumeDeadline = nil
+        return true
     }
 
     /// Records a power event (sleep, wake, screen sleep/wake) together with the panel and display
