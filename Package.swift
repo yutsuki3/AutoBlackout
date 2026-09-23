@@ -16,6 +16,13 @@ let package = Package(
             dependencies: ["AutoBlackoutCore"],
             path: "Sources/AutoBlackout"
         ),
+        // Tests for the parts of the executable that don't touch a real display (logger, state
+        // store, diagnostics formatting, host info).
+        .testTarget(
+            name: "AutoBlackoutTests",
+            dependencies: ["AutoBlackout", "AutoBlackoutCore"],
+            path: "Tests/AutoBlackoutTests"
+        ),
         .testTarget(
             name: "AutoBlackoutCoreTests",
             dependencies: ["AutoBlackoutCore"],

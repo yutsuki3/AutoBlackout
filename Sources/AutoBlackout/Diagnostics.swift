@@ -52,7 +52,7 @@ enum Diagnostics {
         return out.joined(separator: "\n")
     }
 
-    private static func rows(_ displays: [DisplayInfo]) -> [String] {
+    static func rows(_ displays: [DisplayInfo]) -> [String] {
         if displays.isEmpty { return ["- none"] }
         return displays.map {
             "- id=\($0.id) builtin=\($0.isBuiltin) online=\($0.isOnline) active=\($0.isActive) "
@@ -61,8 +61,8 @@ enum Diagnostics {
         }
     }
 
-    private static func tail(_ count: Int) -> [String] {
-        let url = FileEventLogger.directory.appendingPathComponent("recovery.log")
+    static func tail(_ count: Int, in directory: URL = FileEventLogger.directory) -> [String] {
+        let url = directory.appendingPathComponent("recovery.log")
         guard let text = try? String(contentsOf: url, encoding: .utf8) else { return ["(no log)"] }
         return Array(text.split(separator: "\n", omittingEmptySubsequences: true).suffix(count).map(String.init))
     }
