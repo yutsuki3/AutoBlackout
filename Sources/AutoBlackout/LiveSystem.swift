@@ -5,9 +5,10 @@ import Foundation
 import IOKit.pwr_mgt
 import os
 
-/// 本物のディスプレイに対する `DisplaySystem` 実装。実機に作用するのはこのクラスの setEnabled だけ。
+/// The real-hardware `DisplaySystem` implementation. This class's `setEnabled` is the only place
+/// that ever touches a real display.
 final class LiveDisplaySystem: DisplaySystem {
-    /// `--verify-restore` 専用: `isDisableAllowed` が false のまま無効化を許可する。
+    /// `--verify-restore` only: lets a disable request through even while `isDisableAllowed` is false.
     private let allowsDisableForVerification: Bool
 
     init(allowsDisableForVerification: Bool = false) {
@@ -29,8 +30,9 @@ final class LiveDisplaySystem: DisplaySystem {
         PrivateDisplayAPI.setEnabled(enabled, for: displayID, overrideDisableBlock: allowsDisableForVerification)
     }
 
-    /// `pmset displaysleepnow`（root不要）で全ディスプレイをスリープさせ、数秒後にユーザー操作を宣言して起こす。
-    /// 画面ロックの設定によっては、復帰後にロック画面が出る。
+    /// Puts every display to sleep with `pmset displaysleepnow` (no root needed), then declares user
+    /// activity a few seconds later to wake them back up. Depending on the screen-lock settings, the
+    /// lock screen may appear after waking.
     func powerCycleDisplays() {
         let pmset = Process()
         pmset.executableURL = URL(fileURLWithPath: "/usr/bin/pmset")
@@ -40,7 +42,8 @@ final class LiveDisplaySystem: DisplaySystem {
         } catch {
             return
         }
-        // メインスレッドが CG の呼び出しで塞がっていても起こせるよう、別キューで実行する。
+        // Run on a background queue so this still wakes the displays even if the main thread is
+        // blocked inside a CG call.
         DispatchQueue.global().asyncAfter(deadline: .now() + 3) {
             var assertion: IOPMAssertionID = 0
             let result = IOPMAssertionDeclareUserActivity(
@@ -76,11 +79,13 @@ final class LiveDisplaySystem: DisplaySystem {
     }
 }
 
-/// コマンドとして動くモード（`--restore` 等）のメインループ。UI は出さないが NSApplication で回す。
+/// The main loop used for command-line modes (`--restore` etc.). No UI is shown, but it still runs
+/// on `NSApplication` rather than a bare run loop.
 ///
-/// 素の `RunLoop.main.run()` だと、自分で構成変更（無効化など）を確定させた後は WindowServer からの
-/// 画面変更通知が処理されず、`CGGetOnlineDisplayList` が古いまま残る（外部ディスプレイを抜いても一覧に残る）。
-/// 2026-09-23 に、仮想ディスプレイを無効化した後に別の仮想ディスプレイが見えないことで再現・確認した。
+/// A bare `RunLoop.main.run()` doesn't process WindowServer's screen-change notifications after this
+/// process commits its own configuration change (e.g. a disable), so `CGGetOnlineDisplayList` goes
+/// stale (an unplugged external display stays in the list). Reproduced and confirmed on 2026-09-23
+/// by disabling one virtual display and finding another virtual display invisible afterward.
 enum HeadlessMainLoop {
     static func run() -> Never {
         NSApplication.shared.setActivationPolicy(.prohibited)
@@ -89,7 +94,8 @@ enum HeadlessMainLoop {
     }
 }
 
-/// ログに残す実行環境。無効化後に戻せるかは機種（M3 の MacBook Air 等）と macOS のビルドに依存する。
+/// The runtime environment, for logging. Whether the display can be restored after being disabled
+/// depends on the Mac model (e.g. the MacBook Air M3) and the macOS build.
 enum HostInfo {
     static var model: String {
         var size = 0
@@ -99,11 +105,20 @@ enum HostInfo {
         return String(cString: buffer)
     }
 
-    static var summary: String {
-        "model=\(model) os=\(ProcessInfo.processInfo.operatingSystemVersionString)"
+    /// The macOS build number (e.g. "25G229"), used to key the per-host restore-verification allowlist.
+    static var osBuild: String {
+        var size = 0
+        guard sysctlbyname("kern.osversion", nil, &size, nil, 0) == 0, size > 0 else { return "unknown" }
+        var buffer = [CChar](repeating: 0, count: size)
+        guard sysctlbyname("kern.osversion", &buffer, &size, nil, 0) == 0 else { return "unknown" }
+        return String(cString: buffer)
     }
 
-    /// 蓋が閉じているか。取得できなければ nil。
+    static var summary: String {
+        "model=\(model) os=\(ProcessInfo.processInfo.operatingSystemVersionString) build=\(osBuild)"
+    }
+
+    /// Whether the lid is closed. `nil` if it can't be determined.
     static var isLidClosed: Bool? {
         let root = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPMrootDomain"))
         guard root != 0 else { return nil }
@@ -113,7 +128,8 @@ enum HostInfo {
     }
 }
 
-/// プロセスを跨ぐ状態の保存先。`--restore` で起動した別プロセスからも同じ値を読めるよう固定ドメインを使う。
+/// Where state is stored across process boundaries, so a separate `--restore` process can read the
+/// same values. Uses a fixed suite name for that reason.
 final class UserDefaultsStateStore: DisplayStateStore {
     private let defaults = UserDefaults(suiteName: "io.github.yutsuki3.AutoBlackout") ?? .standard
 
@@ -133,7 +149,7 @@ final class UserDefaultsStateStore: DisplayStateStore {
 
     private func write(_ value: CGDirectDisplayID?, _ key: String) {
         if let value { defaults.set(NSNumber(value: value), forKey: key) } else { defaults.removeObject(forKey: key) }
-        defaults.synchronize() // 直後に強制終了されても残るように
+        defaults.synchronize() // so the value survives even if the process is killed right after
     }
 }
 
@@ -143,8 +159,8 @@ final class MainQueueScheduler: Scheduler {
     }
 }
 
-/// os_log と ~/Library/Logs/AutoBlackout/recovery.log の両方に書く。
-/// 1行ごとに開閉するので、クラッシュや強制終了の直前の記録も残る。2MBでローテート。
+/// Writes to both os_log and ~/Library/Logs/AutoBlackout/recovery.log. Opens and closes the file
+/// for each line, so a log line survives even right before a crash or force-quit. Rotates at 2MB.
 final class FileEventLogger: EventLogger {
     static let directory = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Logs/AutoBlackout", isDirectory: true)
@@ -152,7 +168,7 @@ final class FileEventLogger: EventLogger {
     private let osLog = Logger(subsystem: "io.github.yutsuki3.AutoBlackout", category: "recovery")
     private let url: URL?
     private let formatter = ISO8601DateFormatter()
-    /// true なら標準出力にも書く（`--restore` 用）。
+    /// Also echoes to stdout when true (used by `--restore`).
     private let echo: Bool
 
     init(echo: Bool = false) {

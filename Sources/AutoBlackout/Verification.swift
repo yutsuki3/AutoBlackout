@@ -4,13 +4,19 @@ import Foundation
 
 /// `AutoBlackout --verify-restore --confirm-reboot-risk [--after-unplug]`
 ///
-/// 内蔵ディスプレイを1回だけOFFにし、アプリ本体と同じ復帰手順で戻るかを確かめる。
-/// `--after-unplug` を付けると、自分からは復帰を要求せず、外部ディスプレイが抜かれて
-/// 「使える外部ディスプレイがない」と判定されたときの復帰を確かめる。
-/// 戻らなければ再起動が必要になるので、外部ディスプレイと電源をつなぎ、蓋を開けた状態で、人が見ているときにだけ実行する。
+/// Disables the built-in display once and checks whether the app's own restore procedure brings it
+/// back. With `--after-unplug`, it doesn't request the restore itself; instead it checks the restore
+/// that happens once the external display is unplugged and "no usable external display" is
+/// detected. If it doesn't come back, a reboot is needed, so only run this with an external display
+/// and power connected, the lid open, and someone watching.
 ///
-/// 自動OFFは使わない。再通電で外部ディスプレイがスリープ→復帰したのを「新しく接続された」と判定し、
-/// 戻った直後に再びOFFにしてしまうことがあるため。
+/// On success, this host (this exact Mac model + macOS build) is remembered as verified, which is
+/// what lets `AutoBlackout` use the disable feature going forward — see
+/// `PrivateDisplayAPI.isDisableAllowed`.
+///
+/// Auto-disable is not used here: it could mistake the external display waking from sleep during
+/// the power cycle for a fresh connection and immediately disable the panel again right after it
+/// comes back.
 enum RestoreVerification {
     private enum Phase {
         case disabling
@@ -19,7 +25,8 @@ enum RestoreVerification {
         case restoring
     }
 
-    /// OFFにしてから復帰を始めるまでの時間。事故のときと同じく、パネルが切断扱い（hot plug 0）になるのを待つ。
+    /// How long to wait after disabling before starting the restore. Mirrors the real accidents:
+    /// gives the panel time to become hardware-disconnected (hot plug 0).
     private static let holdSeconds: TimeInterval = 5
     private static let unplugWaitSeconds: TimeInterval = 180
     private static let giveUpSeconds: TimeInterval = 600
@@ -28,7 +35,8 @@ enum RestoreVerification {
         let logger = FileEventLogger(echo: true)
         logger.log("verify: " + HostInfo.summary)
         guard CommandLine.arguments.contains("--confirm-reboot-risk") else {
-            print("戻らなければ再起動が必要になります。理解した上で --confirm-reboot-risk を付けて実行してください。")
+            print("If the display doesn't come back, a reboot will be required. "
+                + "Pass --confirm-reboot-risk once you understand that and want to proceed.")
             exit(64)
         }
 
@@ -94,7 +102,8 @@ enum RestoreVerification {
                 }
 
             case .holding:
-                // 外部が外れた等で復帰が必要になれば、ここで既に復帰処理が始まる。
+                // If a restore becomes necessary for another reason (e.g. the external display
+                // dropped), it will already have started by the time we get here.
                 controller.evaluate(reason: "verify-hold")
                 guard inPhase >= holdSeconds else { return }
                 phase = .restoring
@@ -104,6 +113,9 @@ enum RestoreVerification {
             case .restoring:
                 if !controller.restorePending, !controller.isRepairing, controller.panelStatus == .on {
                     logger.log(String(format: "verify: RESULT=restored %.1fs after the restore started", inPhase))
+                    HostVerification.markCurrentHostVerified()
+                    logger.log("verify: this host (\(HostVerification.current)) is now marked as verified; "
+                        + "the disable feature is available")
                     exit(0)
                 }
                 if controller.needsLidCycle, !lidHintShown {
@@ -121,7 +133,8 @@ enum RestoreVerification {
         HeadlessMainLoop.run()
     }
 
-    /// `AutoBlackout --power-cycle-displays`: 復帰手順の再通電だけを単独で試す（内蔵はONのまま）。
+    /// `AutoBlackout --power-cycle-displays`: tries just the restore procedure's power-cycle step on
+    /// its own, without touching the built-in panel's enabled state.
     static func powerCycleOnly() -> Never {
         let logger = FileEventLogger(echo: true)
         let system = LiveDisplaySystem()

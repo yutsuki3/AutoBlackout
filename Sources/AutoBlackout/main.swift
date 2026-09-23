@@ -8,9 +8,10 @@ if CommandLine.arguments.contains("--power-cycle-displays") {
     RestoreVerification.powerCycleOnly()
 }
 
-// 緊急復旧モード: `AutoBlackout --restore`
-// 画面が真っ暗でも SSH やターミナルから復帰させる。アプリ本体と同じ手順（有効化要求の再試行 →
-// ディスプレイの再通電 → 蓋の開閉の案内）を、復帰を確認できるまで最大5分続ける。
+// Emergency recovery mode: `AutoBlackout --restore`
+// Restores the built-in display even from SSH or a terminal with a blank screen. Runs the same
+// procedure as the app itself (retry the enable request -> power-cycle the displays -> prompt to
+// cycle the lid), for up to 5 minutes or until the restore is confirmed.
 if CommandLine.arguments.contains("--restore") {
     let logger = FileEventLogger(echo: true)
     logger.log("--restore: " + HostInfo.summary)
@@ -30,7 +31,8 @@ if CommandLine.arguments.contains("--restore") {
     controller.onStateChange = {
         guard controller.needsLidCycle, !lidHintShown else { return }
         lidHintShown = true
-        print("内蔵ディスプレイがまだ戻りません。蓋を閉じて5秒ほど待ってから開いてください（このコマンドは実行したままにしてください）。")
+        print("The built-in display still hasn't come back. Close the lid, wait about 5 seconds, "
+            + "then open it (leave this command running).")
     }
     controller.requestRestore(trigger: "--restore")
 
@@ -53,5 +55,5 @@ if CommandLine.arguments.contains("--restore") {
 let app = NSApplication.shared
 let delegate = AppDelegate()
 app.delegate = delegate
-app.setActivationPolicy(.accessory) // Dockに表示せず、メニューバーのみに常駐する
+app.setActivationPolicy(.accessory) // menu bar only, no Dock icon
 app.run()

@@ -1,7 +1,7 @@
 #!/bin/bash
-# .app バンドルを組み立てて ad-hoc 署名する。
-# 使い方: scripts/build-app.sh
-# 出力: .build/release/AutoBlackout.app
+# Assembles the .app bundle and ad-hoc signs it.
+# Usage: scripts/build-app.sh
+# Output: .build/release/AutoBlackout.app
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -24,5 +24,5 @@ codesign --force --deep --sign - "$APP_BUNDLE"
 
 echo "==> done: $APP_BUNDLE"
 echo ""
-echo "/Applications にインストールするには:"
+echo "To install it to /Applications:"
 echo "  cp -R \"$APP_BUNDLE\" /Applications/"

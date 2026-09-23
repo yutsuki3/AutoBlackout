@@ -1,12 +1,13 @@
 import CoreGraphics
 import Foundation
 
-/// 内蔵ディスプレイの有効/無効を切り替える非公開API (`SLSConfigureDisplayEnabled` /
-/// `CGSConfigureDisplayEnabled`) を、実行時に `dlsym` で解決して呼び出すラッパー。
+/// A wrapper that resolves the private APIs used to enable/disable the built-in display
+/// (`SLSConfigureDisplayEnabled` / `CGSConfigureDisplayEnabled`) at runtime via `dlsym`.
 ///
-/// - SDKに含まれないシンボルなので、コンパイル時ではなく実行時に存在確認を行う。
-/// - シンボルが見つからない場合は `isAvailable == false` となり、
-///   呼び出し側はUIをグレーアウトするなどして安全側に倒す。
+/// - These symbols are not part of the SDK, so their existence is checked at runtime rather
+///   than at compile time.
+/// - If the symbol can't be found, `isAvailable` is `false` and callers should fail safe
+///   (e.g. gray out the UI).
 enum PrivateDisplayAPI {
     private typealias ConfigureEnabledFn = @convention(c) (
         CGDisplayConfigRef?, CGDirectDisplayID, Bool
@@ -19,34 +20,51 @@ enum PrivateDisplayAPI {
     private static let configureEnabled: ConfigureEnabledFn? = resolveConfigureEnabled()
     private static let getDisplayList: GetDisplayListFn? = resolveGetDisplayList()
 
-    /// このMac・このmacOSバージョンで切り替えAPIが利用可能かどうか。
+    /// Whether the enable/disable API is available on this Mac and macOS version.
     static var isAvailable: Bool { configureEnabled != nil }
 
-    /// 無効化（OFF）を許可するか。
+    /// Whether disabling (turning OFF) the built-in display is allowed.
     ///
-    /// MacBook Air M3 (Mac15,12) / macOS 26.7 (25G229) で、無効化後の有効化が
-    /// `CGCompleteDisplayConfiguration` で kCGErrorIllegalArgument (1001) になり、再起動でしか戻らない事故が2回あった。
+    /// On a MacBook Air M3 (Mac15,12) / macOS 26.7 (25G229), re-enabling the built-in panel after
+    /// disabling it failed with `CGCompleteDisplayConfiguration` returning kCGErrorIllegalArgument
+    /// (1001), and only a reboot brought it back — twice.
     ///
-    /// 原因（ログと逆アセンブルで確認）:
-    /// - エントリーモデルの M3 は内蔵パネルの接続を外部ディスプレイ用に転用できる設計で、
-    ///   無効化するとパネルがハードウェア的に切断扱いになる（IOMFB "Display 1 hot plug 0"）。
-    /// - その状態では WindowServer (`configuration_engine::config_via_client_api`) が有効化要求を
-    ///   事前チェックで弾き、1001 を返す。確定オプション（`.permanently` 等）や同じトランザクションに
-    ///   他の変更を含めても、このチェックの結果は変わらない。
-    /// - ディスプレイのスリープ→復帰や蓋の開閉でパネルが再通電（"hot plug 1"）した後なら、有効化要求は通る。
+    /// Root cause (determined from WindowServer logs and a SkyLight disassembly):
+    /// - Entry-level M3 models repurpose the built-in panel's connection so the machine can drive
+    ///   two external displays with the lid closed. As a side effect, disabling the panel makes it
+    ///   look hardware-disconnected (IOMFB logs "Display 1 hot plug 0").
+    /// - While in that state, WindowServer's `configuration_engine::config_via_client_api` rejects
+    ///   the enable request in a precheck and returns 1001 (before the "client api - Enable display"
+    ///   log line even appears). Changing the commit options (e.g. `.permanently`) or bundling other
+    ///   changes into the same transaction doesn't change the outcome of that check.
+    /// - Once the panel is re-powered ("hot plug 1") — by a display sleep/wake cycle or by closing
+    ///   and reopening the lid — the enable request succeeds.
     ///
-    /// `BlackoutController` の復帰手順（再試行 → 再通電 → 蓋の開閉の案内）で戻ることを 2026-09-23 に実機で確認したので許可する:
-    /// - 外部接続のままONに戻す: 再通電1回で、要求から16.5秒で復帰。
-    /// - OFFのまま外部ディスプレイを抜く: 画面が1枚も無い状態から、再通電1回で、抜いてから約10秒で復帰。
-    /// macOS の更新後は `AutoBlackout --verify-restore --confirm-reboot-risk [--after-unplug]` で再確認すること。
-    static let isDisableAllowed = true
+    /// `BlackoutController`'s restore procedure (retry -> power-cycle -> prompt to cycle the lid)
+    /// was confirmed on real hardware to bring the display back on 2026-09-23:
+    /// - Restoring with an external display still connected: one power cycle, restored 16.5s after
+    ///   the request.
+    /// - Restoring after unplugging the external display: starting from zero displays, one power
+    ///   cycle, restored about 10s after the unplug.
+    ///
+    /// That verification was only ever run on the one machine above. To avoid the same "stuck black
+    /// screen until reboot" accident on a Mac model or macOS build nobody has actually tested, this
+    /// is gated per host: it's `true` only for combinations that either ship in `HostVerification`'s
+    /// allowlist, or that this exact machine has locally confirmed by running
+    /// `AutoBlackout --verify-restore --confirm-reboot-risk [--after-unplug]` successfully (see
+    /// `HostVerification.markCurrentHostVerified()`). On any other Mac/macOS combination, the
+    /// disable feature stays off — `LiveDisplaySystem.isDisableSupported` grays out the menu — until
+    /// the user opts in by running that verification themselves.
+    static var isDisableAllowed: Bool { HostVerification.isCurrentHostVerified }
 
-    /// 直近の失敗の内容（どの段階で何のエラーか）。成功時は nil。
+    /// Details of the most recent failure (which stage, what error). `nil` on success.
     private(set) static var lastError: String?
 
-    /// 指定したディスプレイの有効/無効を切り替える。
-    /// - Parameter overrideDisableBlock: `--verify-restore` 専用。`isDisableAllowed` が false でも無効化を通す。
-    /// - Returns: 成功したかどうか。失敗の詳細は `lastError`。
+    /// Enables or disables the given display.
+    /// - Parameter overrideDisableBlock: for `--verify-restore` only. Lets a disable request
+    ///   through even when `isDisableAllowed` is false, so the restore path can be tested on an
+    ///   unverified host in the first place.
+    /// - Returns: whether the API call reported success. `lastError` has the failure detail.
     @discardableResult
     static func setEnabled(
         _ enabled: Bool,
@@ -77,7 +95,8 @@ enum PrivateDisplayAPI {
             return false
         }
 
-        // .forAppOnly の「プロセス終了で元に戻る」は、上記の実機確認で効かなかった。これには依存しない。
+        // Real-hardware testing showed `.forAppOnly`'s "reverts when the process exits" guarantee
+        // doesn't hold here, so nothing relies on it.
         let complete = CGCompleteDisplayConfiguration(config, .forAppOnly)
         guard complete == .success else {
             lastError = "CGCompleteDisplayConfiguration=\(complete.rawValue)"
@@ -86,12 +105,13 @@ enum PrivateDisplayAPI {
         return true
     }
 
-    /// `SLSGetDisplayList`: 無効化中のディスプレイも含む一覧（読み取り専用）。取得できなければ nil。
+    /// `SLSGetDisplayList`: a read-only list that also includes disabled displays. `nil` if it
+    /// couldn't be resolved.
     static func allDisplayIDs() -> [CGDirectDisplayID]? {
         guard let getDisplayList else { return nil }
         var count: UInt32 = 0
         guard getDisplayList(0, nil, &count) == .success else { return nil }
-        // count取得とlist取得の間に接続が増えても溢れないよう余裕を持たせる。
+        // Leave headroom between the count and list calls in case a display connects in between.
         let capacity = max(count + 8, 32)
         var ids = [CGDirectDisplayID](repeating: 0, count: Int(capacity))
         guard getDisplayList(capacity, &ids, &count) == .success else { return nil }
@@ -107,7 +127,7 @@ enum PrivateDisplayAPI {
     }
 
     private static func resolveConfigureEnabled() -> ConfigureEnabledFn? {
-        // 1. SkyLight.framework の SLSConfigureDisplayEnabled を優先
+        // 1. Prefer SkyLight.framework's SLSConfigureDisplayEnabled.
         if let handle = dlopen(
             "/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight",
             RTLD_LAZY | RTLD_LOCAL
@@ -115,7 +135,7 @@ enum PrivateDisplayAPI {
             return unsafeBitCast(symbol, to: ConfigureEnabledFn.self)
         }
 
-        // 2. フォールバック: CoreGraphics経由で再エクスポートされている CGSConfigureDisplayEnabled
+        // 2. Fallback: CGSConfigureDisplayEnabled, re-exported via CoreGraphics.
         if let handle = dlopen(
             "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics",
             RTLD_LAZY | RTLD_LOCAL
@@ -124,5 +144,41 @@ enum PrivateDisplayAPI {
         }
 
         return nil
+    }
+}
+
+/// A specific Mac model + macOS build combination.
+struct HostKey: Hashable, CustomStringConvertible {
+    let model: String
+    let osBuild: String
+    var description: String { "\(model)/\(osBuild)" }
+}
+
+/// Tracks which exact (Mac model, macOS build) combinations are known to be able to restore the
+/// built-in display after disabling it, so `PrivateDisplayAPI.isDisableAllowed` can fail safe on
+/// everything else. See `PrivateDisplayAPI.isDisableAllowed` for why this exists.
+enum HostVerification {
+    private static let defaults = UserDefaults(suiteName: "io.github.yutsuki3.AutoBlackout") ?? .standard
+    private static let verifiedHostDefaultsKey = "verifiedRestoreHost"
+
+    static var current: HostKey { HostKey(model: HostInfo.model, osBuild: HostInfo.osBuild) }
+
+    /// Combinations confirmed on real hardware by the project and shipped with the app. A macOS
+    /// update changes the build string, so this needs re-confirming (`--verify-restore`) after
+    /// every update even on a listed model.
+    static let shippedAllowlist: Set<HostKey> = [
+        HostKey(model: "Mac15,12", osBuild: "25G229"),
+    ]
+
+    static var isCurrentHostVerified: Bool {
+        if shippedAllowlist.contains(current) { return true }
+        return defaults.string(forKey: verifiedHostDefaultsKey) == current.description
+    }
+
+    /// Called after `AutoBlackout --verify-restore --confirm-reboot-risk` completes successfully:
+    /// remembers that this exact machine + macOS build has been confirmed to restore correctly, so
+    /// the disable feature can be used on it going forward.
+    static func markCurrentHostVerified() {
+        defaults.set(current.description, forKey: verifiedHostDefaultsKey)
     }
 }

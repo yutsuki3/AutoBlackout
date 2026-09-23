@@ -4,7 +4,8 @@ import XCTest
 
 // MARK: - Fakes
 
-/// 実機の振る舞いを模したディスプレイ。無効化したパネルはオンライン一覧から消える（バグ1の再現条件）。
+/// Mimics real-hardware behavior: a disabled panel disappears from the online list (the condition
+/// that reproduces bug 1).
 final class FakeDisplaySystem: DisplaySystem {
     static let panel: CGDirectDisplayID = 1
     static let external: CGDirectDisplayID = 5
@@ -13,28 +14,32 @@ final class FakeDisplaySystem: DisplaySystem {
     var isDisableSupported = true
     var lastErrorDescription: String?
     var panelEnabled = true
-    /// 内蔵パネルがディスプレイスリープ中（オンライン一覧には残る）。
+    /// The built-in panel is display-asleep (still present on the online list).
     var panelAsleep = false
     var externals: Set<CGDirectDisplayID> = []
-    /// 接続されたままスリープしている外部ディスプレイ（`externals` の部分集合）。
+    /// External displays that are connected but asleep (a subset of `externals`).
     var asleepExternals: Set<CGDirectDisplayID> = []
-    /// SLSGetDisplayList が使えるか。
+    /// Whether SLSGetDisplayList is available.
     var allListAvailable = false
-    /// true の間、有効化要求は成功を返すが実際には適用されない（バグ3の再現条件）。
+    /// While true, enable requests report success but don't actually apply (the condition that
+    /// reproduces bug 3).
     var ignoreEnableRequests = false
-    /// true の間、無効化要求は成功を返すが実際には適用されない。
+    /// While true, disable requests report success but don't actually apply.
     var ignoreDisableRequests = false
-    /// true の間、有効化要求は 1001 で拒否される（M3 で無効化後にパネルが切断扱いになった状態）。
-    /// `powerCycleDisplays()` か蓋の開閉（テストでは直接 false にする）で解除される。
+    /// While true, enable requests are rejected with 1001 (the M3's panel-treated-as-disconnected
+    /// state after being disabled). Cleared by `powerCycleDisplays()` or (in tests) by setting this
+    /// back to false directly, standing in for a lid cycle.
     var panelUnpowered = false
-    /// false なら、ディスプレイの再通電ではパネルが再通電しない（蓋の開閉が必要なケース）。
+    /// If false, power-cycling the displays doesn't re-power the panel (the case that needs a lid cycle).
     var powerCycleRepowersPanel = true
-    /// true なら、再通電の後も外部ディスプレイはしばらくスリープしたまま（内蔵より遅れて起きる）。
+    /// If true, external displays stay asleep for a while after a power cycle (waking up later than
+    /// the built-in display).
     var powerCycleLeavesExternalsAsleep = false
-    /// true なら、再通電の復帰でパネルが（有効化要求の反映ではなく）画面の復帰経路で戻る。
+    /// If true, a power cycle restores the panel through the screen-wake path instead of an enable
+    /// request being applied.
     var powerCycleRestoresPanelDirectly = false
     var powerCycleCount = 0
-    /// setEnabled が呼ばれた瞬間のフック。
+    /// Hook invoked the instant setEnabled is called.
     var onSetEnabled: ((Bool) -> Void)?
     var calls: [(enabled: Bool, id: CGDirectDisplayID)] = []
 
@@ -58,7 +63,8 @@ final class FakeDisplaySystem: DisplaySystem {
         calls.append((enabled, displayID))
         guard displayID == Self.panel else { return false }
         if enabled, panelEnabled || panelUnpowered {
-            // 実機と同じく、既にONのパネルへの有効化要求も事前チェックで 1001 になる。
+            // Matches real hardware: an enable request for an already-ON panel is also rejected
+            // with 1001 in the precheck.
             lastErrorDescription = "CGCompleteDisplayConfiguration=1001"
             return false
         }
@@ -89,7 +95,7 @@ final class ManualScheduler: Scheduler {
         pending.append(work)
     }
 
-    /// 予約済みの処理を1段だけ実行する（=1秒進める）。
+    /// Runs exactly one batch of scheduled work (i.e. advances time by one step).
     func advance() {
         let work = pending
         pending.removeAll()
@@ -119,7 +125,8 @@ final class BlackoutControllerTests: XCTestCase {
 
     private var clock = Date(timeIntervalSince1970: 0)
 
-    /// 既存のシナリオは猶予なし（外部が消えたら即復帰）で検証する。猶予のテストは `externalLossGrace` を渡す。
+    /// Existing scenarios are checked with no grace period (restore immediately when the external
+    /// display disappears). Grace-period tests pass `externalLossGrace` explicitly.
     private func makeController(externalLossGrace: TimeInterval = 0) -> BlackoutController {
         BlackoutController(
             system: system, store: store, scheduler: scheduler, logger: logger,
@@ -135,7 +142,7 @@ final class BlackoutControllerTests: XCTestCase {
         XCTAssertEqual(c.managedDisplay, FakeDisplaySystem.panel)
     }
 
-    // バグ1: 無効化してオンライン一覧から消えても、IDを見失わずに復帰できる。
+    // Bug 1: even after a disable drops the ID from the online list, it can still be restored.
     func testUnplugAfterAutoDisableRestoresPanel() {
         let c = makeController()
         c.launch()
@@ -162,7 +169,7 @@ final class BlackoutControllerTests: XCTestCase {
         XCTAssertEqual(c.builtInPanelID(), FakeDisplaySystem.panel)
     }
 
-    // バグ2: 終了時に明示的に復元する。
+    // Bug 2: explicitly restores on quit.
     func testTerminationRestoresManagedPanel() {
         let c = makeController()
         c.launch()
@@ -179,7 +186,7 @@ final class BlackoutControllerTests: XCTestCase {
         XCTAssertTrue(system.calls.isEmpty)
     }
 
-    // バグ3: APIが成功を返しても適用されない場合、確認できるまで再試行する。
+    // Bug 3: retries until confirmed if the API reports success without actually applying.
     func testRestoreIsRetriedUntilVerified() {
         let c = makeController()
         c.launch()
@@ -188,7 +195,7 @@ final class BlackoutControllerTests: XCTestCase {
         system.ignoreEnableRequests = true
         system.externals = []
         c.evaluate(reason: "callback")
-        scheduler.advance() // 検証 → 未適用 → 再試行
+        scheduler.advance() // verify -> not applied -> retry
         scheduler.advance()
         let enableCalls = system.calls.filter(\.enabled).count
         XCTAssertGreaterThanOrEqual(enableCalls, 3)
@@ -196,9 +203,9 @@ final class BlackoutControllerTests: XCTestCase {
         XCTAssertEqual(c.panelStatus, .restoring)
 
         system.ignoreEnableRequests = false
-        scheduler.advance() // 3回目の失敗 → 再通電（待ち時間に入る）
-        scheduler.advance() // 待ち時間の後に有効化要求
-        scheduler.advance() // 検証
+        scheduler.advance() // 3rd failure -> power cycle (enters the settle delay)
+        scheduler.advance() // enable request after the settle delay
+        scheduler.advance() // verify
         XCTAssertTrue(system.panelEnabled)
         XCTAssertFalse(c.restorePending)
         XCTAssertNil(c.managedDisplay)
@@ -215,7 +222,7 @@ final class BlackoutControllerTests: XCTestCase {
         XCTAssertEqual(c.panelStatus, .on)
     }
 
-    // 要望1: 前回プロセスが無効化したまま落ちた → 新プロセス起動時に復元する。
+    // Request 1: a previous process crashed with the panel disabled -> the new process restores it at launch.
     func testLaunchSelfHealsFromPersistedState() {
         system.panelEnabled = false
         store.managedDisplayID = FakeDisplaySystem.panel
@@ -255,7 +262,7 @@ final class BlackoutControllerTests: XCTestCase {
 
         let c = makeController()
         c.launch()
-        XCTAssertFalse(system.panelEnabled, "外部がある間はOFFを維持してよい")
+        XCTAssertFalse(system.panelEnabled, "OK to stay OFF while an external display is present")
         XCTAssertEqual(c.managedDisplay, FakeDisplaySystem.panel)
 
         system.externals = []
@@ -264,13 +271,13 @@ final class BlackoutControllerTests: XCTestCase {
         XCTAssertTrue(system.panelEnabled)
     }
 
-    // 要望2: コールバックが来なくてもポーリングで是正される。
+    // Request 2: corrected by polling even without a callback.
     func testPollingRestoresWithoutCallback() {
         let c = makeController()
         c.launch()
         connectExternalAndAutoDisable(c)
 
-        system.externals = [] // コールバックは来ない
+        system.externals = [] // no callback arrives
         c.evaluate(reason: "poll")
         scheduler.advance()
         XCTAssertTrue(system.panelEnabled)
@@ -283,9 +290,9 @@ final class BlackoutControllerTests: XCTestCase {
         c.evaluate(reason: "callback")
         XCTAssertFalse(system.panelEnabled)
 
-        system.externals = [] // 検証待ちの間に外れる
-        c.evaluate(reason: "callback") // isChanging 中なので何もしない
-        scheduler.advance() // 検証 → 外部なし → 復元要求
+        system.externals = [] // disconnects while verification is pending
+        c.evaluate(reason: "callback") // no-op: isChanging is true
+        scheduler.advance() // verify -> no external -> restore requested
         scheduler.advance()
         XCTAssertTrue(system.panelEnabled)
     }
@@ -295,13 +302,13 @@ final class BlackoutControllerTests: XCTestCase {
         c.launch()
         connectExternalAndAutoDisable(c)
 
-        system.externals = [99] // 元のモニターが消え、別のIDが現れた
+        system.externals = [99] // the original monitor disappeared, a different ID showed up
         c.evaluate(reason: "callback")
         scheduler.advance()
         XCTAssertTrue(system.panelEnabled)
     }
 
-    // 安全ルール: 外部ディスプレイが無い状態では手動でもOFFにしない。
+    // Safety rule: never disable manually either, with no external display present.
     func testManualDisableRefusedWithoutExternal() {
         let c = makeController()
         c.launch()
@@ -315,12 +322,12 @@ final class BlackoutControllerTests: XCTestCase {
         c.launch()
         connectExternalAndAutoDisable(c)
 
-        c.toggleManually() // ONに戻す
+        c.toggleManually() // turn back ON
         scheduler.advance()
         XCTAssertTrue(system.panelEnabled)
 
         for _ in 0..<5 { c.evaluate(reason: "poll"); scheduler.advance() }
-        XCTAssertTrue(system.panelEnabled, "外部が繋がったままでも、手動ONは自動OFFで上書きされない")
+        XCTAssertTrue(system.panelEnabled, "a manual restore isn't overridden by auto-OFF even with the external still connected")
     }
 
     func testAutoModeOffDoesNotDisable() {
@@ -339,7 +346,7 @@ final class BlackoutControllerTests: XCTestCase {
         XCTAssertTrue(system.calls.isEmpty)
     }
 
-    // 実機で「OFFにすると再起動まで戻せない」と判明した環境では、自動でも手動でもOFFにしない。
+    // On hosts where OFF is known to strand the panel until reboot, never disable, automatically or manually.
     func testDisableIsNeverCalledWhenUnsupported() {
         system.isDisableSupported = false
         let c = makeController()
@@ -353,7 +360,7 @@ final class BlackoutControllerTests: XCTestCase {
         XCTAssertNil(c.managedDisplay)
     }
 
-    // M3: 有効化要求が 1001 で拒否され続けたら、ディスプレイを再通電させてから再試行する。
+    // M3: if enable requests keep getting rejected with 1001, power-cycle the displays and retry.
     func testRejectedRestorePowerCyclesDisplaysThenSucceeds() {
         let c = makeController()
         c.launch()
@@ -362,17 +369,17 @@ final class BlackoutControllerTests: XCTestCase {
         system.panelUnpowered = true
         c.requestRestore(trigger: "manual")
         for _ in 0..<(BlackoutController.failuresBeforeFirstPowerCycle - 1) { scheduler.advance() }
-        XCTAssertEqual(system.powerCycleCount, 0, "直ちには画面を点滅させない")
+        XCTAssertEqual(system.powerCycleCount, 0, "doesn't flash the screen right away")
         XCTAssertFalse(system.panelEnabled)
 
-        scheduler.advance() // 3回目の失敗 → 再通電
+        scheduler.advance() // 3rd failure -> power cycle
         XCTAssertEqual(system.powerCycleCount, 1)
         let callsAtPowerCycle = system.calls.count
-        XCTAssertTrue(c.isChanging, "再通電が落ち着くまで有効化要求を送らない")
-        scheduler.advance() // 待ち時間の後に有効化要求
+        XCTAssertTrue(c.isChanging, "doesn't send enable requests until the power cycle settles")
+        scheduler.advance() // enable request after the settle delay
         XCTAssertEqual(system.calls.count, callsAtPowerCycle + 1)
         XCTAssertTrue(system.panelEnabled)
-        scheduler.advance() // 検証
+        scheduler.advance() // verify
         XCTAssertFalse(c.restorePending)
         XCTAssertFalse(c.needsLidCycle)
         XCTAssertNil(store.managedDisplayID)
@@ -388,14 +395,14 @@ final class BlackoutControllerTests: XCTestCase {
         system.externals = []
         c.evaluate(reason: "callback")
         for _ in 0..<200 { scheduler.advance() }
-        XCTAssertEqual(system.powerCycleCount, BlackoutController.maxPowerCycles, "点滅は上限回数まで")
+        XCTAssertEqual(system.powerCycleCount, BlackoutController.maxPowerCycles, "flashing is capped")
         XCTAssertTrue(c.needsLidCycle)
-        XCTAssertTrue(c.restorePending, "諦めずに再試行を続ける")
+        XCTAssertTrue(c.restorePending, "keeps retrying instead of giving up")
         XCTAssertEqual(c.panelStatus, .restoring)
 
-        system.panelUnpowered = false // 蓋を閉じて開いた
-        scheduler.advance() // 次の有効化要求が通る
-        scheduler.advance() // 検証
+        system.panelUnpowered = false // lid closed and reopened
+        scheduler.advance() // the next enable request succeeds
+        scheduler.advance() // verify
         XCTAssertTrue(system.panelEnabled)
         XCTAssertFalse(c.needsLidCycle)
         XCTAssertFalse(c.restorePending)
@@ -427,7 +434,7 @@ final class BlackoutControllerTests: XCTestCase {
         XCTAssertTrue(system.panelEnabled)
         XCTAssertFalse(c.restorePending)
 
-        // 2回目のOFF→復帰でも、再び再通電が使える。
+        // Power cycling is available again on the second OFF -> restore round too.
         system.externals = []
         c.evaluate(reason: "poll")
         system.externals = [FakeDisplaySystem.external]
@@ -443,7 +450,8 @@ final class BlackoutControllerTests: XCTestCase {
         XCTAssertEqual(system.powerCycleCount, BlackoutController.maxPowerCycles + 1)
     }
 
-    // アイドルで画面全体がスリープしても内蔵を戻さず、起きたときにも再OFFしない（再通電で画面を起こさないため）。
+    // Idle display sleep across every screen shouldn't restore the panel, and waking shouldn't re-disable it
+    // (since a power cycle would wake the screen).
     func testIdleDisplaySleepKeepsPanelOffWithoutRedisable() {
         let c = makeController()
         c.launch()
@@ -452,17 +460,18 @@ final class BlackoutControllerTests: XCTestCase {
 
         system.asleepExternals = [FakeDisplaySystem.external]
         for _ in 0..<5 { c.evaluate(reason: "poll"); scheduler.advance() }
-        XCTAssertEqual(system.calls.count, callsBefore, "アイドルスリープでは内蔵を戻さない")
+        XCTAssertEqual(system.calls.count, callsBefore, "an idle sleep doesn't restore the built-in display")
         XCTAssertEqual(system.powerCycleCount, 0)
 
         system.asleepExternals = []
         for _ in 0..<5 { c.evaluate(reason: "poll"); scheduler.advance() }
-        XCTAssertEqual(system.calls.count, callsBefore, "復帰を新しい接続とみなして再OFFしない")
+        XCTAssertEqual(system.calls.count, callsBefore, "waking isn't treated as a new connection, so it doesn't re-disable")
         XCTAssertFalse(system.panelEnabled)
         XCTAssertEqual(c.managedDisplay, FakeDisplaySystem.panel)
     }
 
-    // スリープ中の外部はスリープ通知の有無に関わらず「接続あり」。一覧から消えたら戻す。
+    // An asleep external display still counts as "connected" regardless of sleep notifications; only
+    // restore once it disappears from the list.
     func testAsleepExternalKeepsPanelOffUntilRemoved() {
         let c = makeController()
         c.launch()
@@ -480,7 +489,7 @@ final class BlackoutControllerTests: XCTestCase {
         XCTAssertTrue(system.panelEnabled)
     }
 
-    // 外部なしで内蔵がディスプレイスリープしても、OFFになったと誤解して戻そうとしない。
+    // A built-in display sleep with no external connected shouldn't be mistaken for "it got turned off".
     func testBuiltInIdleSleepWithoutExternalDoesNothing() {
         let c = makeController()
         c.launch()
@@ -491,21 +500,22 @@ final class BlackoutControllerTests: XCTestCase {
         XCTAssertEqual(c.panelStatus, .on)
     }
 
-    // 有効化要求が受理されたのに反映されず、再通電の復帰経路で戻った → ONのままもう一度再通電して状態を直す。
+    // An enable request that was accepted but never applied, restored instead via the power-cycle wake
+    // path -> power-cycle once more while ON to fix the resulting state.
     func testWakePathRestoreTriggersResyncPowerCycle() {
         let c = makeController()
         c.launch()
         connectExternalAndAutoDisable(c)
 
-        system.ignoreEnableRequests = true // 受理されるが反映されない（"Failed to plug display 1"）
+        system.ignoreEnableRequests = true // accepted but never applied ("Failed to plug display 1")
         system.powerCycleRestoresPanelDirectly = true
         c.requestRestore(trigger: "manual")
         for _ in 0..<BlackoutController.failuresBeforeFirstPowerCycle { scheduler.advance() }
         XCTAssertEqual(system.powerCycleCount, 1)
-        XCTAssertTrue(system.panelEnabled, "復帰経路で戻った")
+        XCTAssertTrue(system.panelEnabled, "restored via the wake path")
 
-        scheduler.advance() // 待ち時間の後の有効化要求は 1001（既にON）
-        scheduler.advance() // 検証 → 確認 → 状態を直す再通電
+        scheduler.advance() // the enable request after the settle delay gets 1001 (already ON)
+        scheduler.advance() // verify -> confirmed -> repair power cycle
         XCTAssertFalse(c.restorePending)
         XCTAssertTrue(c.isRepairing)
         XCTAssertEqual(system.powerCycleCount, 2)
@@ -529,7 +539,8 @@ final class BlackoutControllerTests: XCTestCase {
         XCTAssertEqual(system.powerCycleCount, 1)
     }
 
-    // 再通電で内蔵が先に戻り、外部が遅れて起きても、戻った直後に自動OFFしない。
+    // If the power cycle restores the built-in display first and the external wakes late, don't
+    // auto-disable immediately after it comes back.
     func testNoAutoDisableWhenExternalWakesAfterPowerCycleRestore() {
         let c = makeController()
         c.launch()
@@ -540,15 +551,15 @@ final class BlackoutControllerTests: XCTestCase {
         c.requestRestore(trigger: "manual")
         for _ in 0..<BlackoutController.failuresBeforeFirstPowerCycle { scheduler.advance() }
         XCTAssertEqual(system.powerCycleCount, 1)
-        scheduler.advance() // 待ち時間の後に有効化要求
-        scheduler.advance() // 検証
+        scheduler.advance() // enable request after the settle delay
+        scheduler.advance() // verify
         XCTAssertTrue(system.panelEnabled)
         XCTAssertFalse(c.restorePending)
 
-        system.asleepExternals = [] // 外部が遅れて起きる
+        system.asleepExternals = [] // the external wakes late
         for _ in 0..<5 { c.evaluate(reason: "poll"); scheduler.advance() }
-        XCTAssertTrue(system.panelEnabled, "戻った直後に自動OFFしない")
-        XCTAssertEqual(system.calls.filter { !$0.enabled }.count, 1, "OFFは最初の1回だけ")
+        XCTAssertTrue(system.panelEnabled, "doesn't auto-disable right after restoring")
+        XCTAssertEqual(system.calls.filter { !$0.enabled }.count, 1, "only the original disable")
     }
 
     func testExternalConnectedWhileAsleepAutoDisablesOnceAwake() {
@@ -558,12 +569,12 @@ final class BlackoutControllerTests: XCTestCase {
         system.asleepExternals = [FakeDisplaySystem.external]
         c.evaluate(reason: "callback")
         scheduler.advance()
-        XCTAssertTrue(system.calls.isEmpty, "スリープ中はOFFにしない")
+        XCTAssertTrue(system.calls.isEmpty, "doesn't disable while it's asleep")
 
         system.asleepExternals = []
         c.evaluate(reason: "poll")
         scheduler.advance()
-        XCTAssertFalse(system.panelEnabled, "起きたら接続時の自動OFFを実行する")
+        XCTAssertFalse(system.panelEnabled, "runs the connection-triggered auto-OFF once it wakes")
     }
 
     func testEnablingAutoModeLaterDoesNotActOnEarlierConnection() {
@@ -578,7 +589,8 @@ final class BlackoutControllerTests: XCTestCase {
         XCTAssertTrue(system.calls.isEmpty)
     }
 
-    // スリープ復帰時に外部が一瞬切断されてつながり直しても、内蔵を戻さない（点灯→即OFFのちらつき防止）。
+    // A brief disconnect/reconnect of the external display on wake shouldn't restore the built-in
+    // display (avoids a flash of on-then-immediately-off).
     func testBriefExternalDropDoesNotRestore() {
         let c = makeController(externalLossGrace: 3)
         c.launch()
@@ -591,7 +603,7 @@ final class BlackoutControllerTests: XCTestCase {
         system.externals = [FakeDisplaySystem.external]
         c.evaluate(reason: "callback")
         clock += 3
-        scheduler.advance() // 猶予後の再評価
+        scheduler.advance() // re-evaluation after the grace period
         for _ in 0..<3 { c.evaluate(reason: "poll"); scheduler.advance() }
 
         XCTAssertEqual(system.calls.count, callsBefore)
@@ -609,10 +621,10 @@ final class BlackoutControllerTests: XCTestCase {
         c.evaluate(reason: "callback")
         clock += 1
         c.evaluate(reason: "poll")
-        XCTAssertEqual(system.calls.count, callsBefore, "猶予中は戻さない")
+        XCTAssertEqual(system.calls.count, callsBefore, "doesn't restore during the grace period")
 
         clock += 2.1
-        scheduler.advance() // 猶予後の再評価 → 復帰要求
+        scheduler.advance() // re-evaluation after the grace period -> restore requested
         XCTAssertEqual(system.calls.last?.enabled, true)
         scheduler.advance()
         XCTAssertTrue(system.panelEnabled)

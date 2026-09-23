@@ -5,12 +5,12 @@ let package = Package(
     name: "AutoBlackout",
     platforms: [.macOS(.v13)],
     targets: [
-        // 状態遷移ロジック。実ディスプレイには一切触れず、プロトコル越しにのみ操作する。
+        // State-machine logic. Never touches a real display, only its protocol abstractions.
         .target(
             name: "AutoBlackoutCore",
             path: "Sources/AutoBlackoutCore"
         ),
-        // 実機との接点（非公開API・CGコールバック・UI）。
+        // The real-hardware surface (private API, CG callbacks, UI).
         .executableTarget(
             name: "AutoBlackout",
             dependencies: ["AutoBlackoutCore"],

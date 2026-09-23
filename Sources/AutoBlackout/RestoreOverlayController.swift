@@ -1,28 +1,28 @@
 import AppKit
 import CoreGraphics
 
-/// 復帰待ち中に、接続されている画面へスピナー付きのHUDを出す。
+/// Shows a HUD with a spinner on every connected screen while a restore is in progress.
 ///
-/// 内蔵パネルは無効化されている間は物理的に何も表示できないため、これは主に
-/// 外部ディスプレイが繋がったままのケース（手動での「強制的に復元」など）向け。
-/// 外部を全部抜いてから内蔵が実際に点灯するまでの数秒間は、画面自体が1枚も
-/// 無い状態になるため、その間は何も表示できない（`NSScreen.screens` が空になり、
-/// 何もしないだけで安全に無視される）。
+/// The built-in panel itself can't show anything while it's disabled, so this is mainly for the
+/// case where an external display stays connected (e.g. a manual "force restore"). For the few
+/// seconds between unplugging every external display and the built-in panel actually lighting up,
+/// there are zero screens to show anything on anyway (`NSScreen.screens` is empty, so this just does
+/// nothing safely).
 final class RestoreOverlayController {
     private final class OverlayWindow: NSWindow {
         override var canBecomeKey: Bool { false }
         override var canBecomeMain: Bool { false }
     }
 
-    private static let restoringText = "内蔵ディスプレイを起動中…"
-    private static let lidCycleText = "内蔵ディスプレイが復帰しません\n蓋を閉じて数秒後に開いてください"
+    private static let restoringText = "Restoring the built-in display…"
+    private static let lidCycleText = "The built-in display isn't coming back.\nClose the lid, wait a few seconds, then open it."
 
     private var windows: [OverlayWindow] = []
     private var labels: [NSTextField] = []
     private var isVisible = false
     private var showingLidMessage = false
 
-    /// 呼ぶたびに現在の状態に合わせて表示/非表示・文言を更新する。何度呼んでも安全。
+    /// Updates visibility and text to match the current state on every call. Safe to call repeatedly.
     func update(isRestoring: Bool, needsLidCycle: Bool, builtInDisplayID: CGDirectDisplayID?) {
         guard isRestoring else {
             hide()
@@ -45,8 +45,9 @@ final class RestoreOverlayController {
         (windows, labels) = Self.makeOverlays(on: screens, text: text(for: needsLidCycle))
     }
 
-    /// 復帰待ちの間に画面構成が変わることがある（外部がつながり直す、内蔵が瞬間的に見えるようになる等）。
-    /// 出す先の画面が増減していたら作り直す。
+    /// The screen configuration can change while waiting for a restore (an external display
+    /// reconnecting, the built-in panel briefly becoming visible, etc.). Rebuild the overlays if the
+    /// set of target screens changed.
     private func refreshScreensIfNeeded(builtInDisplayID: CGDirectDisplayID?) {
         let screens = Self.targetScreens(excluding: builtInDisplayID)
         let currentIDs = Set(windows.compactMap(\.screen).map(Self.screenID))
@@ -104,7 +105,7 @@ final class RestoreOverlayController {
         return (windows, labels)
     }
 
-    /// macOSの音量/明るさHUDに似せた、角丸の半透明パネルを画面中央に出す。
+    /// A rounded, translucent panel centered on screen, styled after macOS's volume/brightness HUD.
     private static func makeOverlay(on screen: NSScreen) -> (OverlayWindow, NSTextField) {
         let size = NSSize(width: 220, height: 220)
         let origin = NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.midY - size.height / 2)

@@ -1,155 +1,223 @@
 # AutoBlackout
 
-外部ディスプレイを接続したら内蔵ディスプレイを自動でOFFにする、macOSメニューバーアプリ。
+A macOS menu bar app that automatically turns off the built-in display when an external display is
+connected.
 
-個人利用目的。非公開API (`SLSConfigureDisplayEnabled` / `CGSConfigureDisplayEnabled`) を
-実行時に `dlsym` で解決して使用しているため、Mac App Storeには配布不可。
-macOSアップデートで動かなくなる可能性がある。
+For personal use. It resolves the private APIs (`SLSConfigureDisplayEnabled` /
+`CGSConfigureDisplayEnabled`) at runtime with `dlsym`, so it can't be distributed through the Mac
+App Store. A macOS update could break it at any time.
 
-## 現在のスコープ
+## Current scope
 
-- [x] メニューバーからの手動トグル
-- [x] 外部モニター接続時の自動OFF / 全外し時の自動復帰
-- [ ] スリープ/ウェイク時の状態再適用
-- [ ] 「外部ディスプレイあり」の判定条件の精緻化（ミラーリング中・スリープ中の除外など）
-- [ ] 複数の非公開シンボル名（macOSバージョン差）へのフォールバック強化
+- [x] Manual toggle from the menu bar
+- [x] Auto-OFF when an external monitor connects / auto-restore when every external monitor is unplugged
+- [ ] Re-apply state on sleep/wake
+- [ ] Refine what counts as "an external display is present" (excluding mirrored displays, sleeping displays, etc.)
+- [ ] Fall back across more private symbol names (macOS version differences)
 
-## MacBook Air M3 で内蔵ディスプレイを戻す仕組み（2026-09-23 実機確認済み）
+## Environment support
 
-### 事象
+- macOS 13 (Ventura) or later
+- Apple Silicon only. The private API used to fully disconnect the built-in display doesn't behave
+  the same way on Intel Macs.
+- **The OFF (disable) feature only works on Mac model + macOS build combinations that have been
+  verified to restore correctly**, either shipped in the app's allowlist or verified locally by
+  running `AutoBlackout --verify-restore`. See the next section for why, and "Verifying the restore
+  procedure on your Mac" for how to verify your own machine. On an unverified host the menu item
+  reads "OFF is disabled (restore not verified on this Mac)" and the app never calls the disable API
+  at all, so there's no functional risk on a machine you haven't verified — just a feature that
+  isn't available yet.
 
-MacBook Air M3 (Mac15,12) / macOS 26.7 (25G229) で、内蔵ディスプレイをOFFにした後、ONに戻す要求
-（`SLSConfigureDisplayEnabled(config, 1, true)` → `CGCompleteDisplayConfiguration`）が `1001` (kCGErrorIllegalArgument) で失敗し、
-再起動でしか戻らない事故が2回あった。
+## Why OFF is gated per host, and how restoring the panel works on the MacBook Air M3
 
-### 原因（WindowServer のログと SkyLight の逆アセンブルから判断）
+### The incident
 
-1. エントリーモデルの M3 は、蓋を閉じたときに外部ディスプレイを2台使えるよう、内蔵パネルの接続を転用する設計になっている。
-   このため無効化すると、パネルがハードウェア的に切断扱いになる（IOMFB が `Display 1 hot plug 0` を出す）。
-2. この状態では、WindowServer の `configuration_engine::config_via_client_api` が有効化要求を事前チェックで弾き、1001 を返す
-   （`client api - Enable display` のログが出る前に拒否される）。
-   確定オプション（`.permanently` 等）を変えても、同じトランザクションに他の変更を含めても、このチェックの結果は変わらない。
-3. ディスプレイのスリープ→復帰や蓋の開閉でパネルが再通電する（`Display 1 hot plug 1`）と、有効化要求が通るようになる。
-   2回の事故では、どちらも再通電の後に有効化要求を送るプロセスが動いていなかった。
-4. 参考: [BetterDisplay #5658](https://github.com/waydabber/BetterDisplay/issues/5658)（同型機で同じ回避策の報告）、
-   [#4723](https://github.com/waydabber/BetterDisplay/issues/4723)（BetterDisplay はこの機種での内蔵OFFを既定で無効にしている）。
+On a MacBook Air M3 (Mac15,12) / macOS 26.7 (25G229), after turning the built-in display off, the
+request to turn it back on (`SLSConfigureDisplayEnabled(config, 1, true)` ->
+`CGCompleteDisplayConfiguration`) failed with `1001` (kCGErrorIllegalArgument), and only a reboot
+brought it back. This happened twice.
 
-### 復帰の手順
+### Root cause (from WindowServer's logs and a SkyLight disassembly)
 
-有効化要求が通らない間、`BlackoutController` は次の順で復帰を試みる:
+1. Entry-level M3 models repurpose the built-in panel's connection so the machine can drive two
+   external displays with the lid closed. As a side effect, disabling the panel makes it look
+   hardware-disconnected (IOMFB logs `Display 1 hot plug 0`).
+2. In that state, WindowServer's `configuration_engine::config_via_client_api` rejects the enable
+   request in a precheck and returns 1001 (before the `client api - Enable display` log line even
+   appears). Changing the commit options (e.g. `.permanently`) or bundling other changes into the
+   same transaction doesn't change the outcome of that check.
+3. Once the panel is re-powered (`Display 1 hot plug 1`) — by a display sleep/wake cycle or by
+   closing and reopening the lid — the enable request succeeds. In both incidents, no process was
+   running to send the enable request once the panel was re-powered.
+4. See also: [BetterDisplay #5658](https://github.com/waydabber/BetterDisplay/issues/5658) (the same
+   workaround reported on the same model), and
+   [#4723](https://github.com/waydabber/BetterDisplay/issues/4723) (BetterDisplay disables built-in
+   OFF by default on this model).
 
-1. 有効化要求を約1秒ごとに送り、実測で確認できるまで続ける。
-2. 3回続けて失敗したら、ディスプレイを再通電させる（`pmset displaysleepnow` → 3秒後にユーザー操作を宣言して復帰）。
-   その後6秒は有効化要求を送らない（スリープ中に送ると WindowServer の再構成待ちで最大10秒ブロックし、1014 で失敗するため）。最大2回まで。
-3. それでも戻らなければ、メニューに「蓋を閉じて数秒後に開いてください」と表示する。有効化要求の再試行は続ける。
+### The restore procedure
 
-ほかに次の対策を入れている:
+While the enable request keeps failing, `BlackoutController` tries, in order:
 
-- スリープ復帰の通知を受けたら、すぐに評価し直す。
-- 外部ディスプレイが一覧から消えても、3秒は内蔵を戻さずに待つ。USB-C のモニターはスリープ復帰時に一瞬（実機で約0.7秒）
-  切断されてつながり直すので、その間に戻すと「内蔵が一瞬点いてすぐ消える」になる。起動時に外部が無いときは待たない。
-- スリープ中の外部ディスプレイも「接続あり」とみなし、一覧から消えたとき（ケーブルを抜いた等）だけ内蔵を戻す。
-  スリープの通知を待つ方式は、通知より先に外部のスリープが見えて内蔵を戻してしまうことがあったのでやめた。
-  自動OFFは外部ディスプレイが新しく接続されたときだけ行い、スリープからの復帰は新しい接続とみなさない。
-- ディスプレイスリープ中の内蔵パネルも「ON」とみなす（一覧に残っているため）。外部なしのアイドルスリープで戻そうとしない。
-- 有効化要求が受理されたのに反映されず（WindowServer: `Failed to plug display 1`）、再通電の復帰経路で内蔵が戻った場合は、
-  ONのままもう一度再通電する。この戻り方をすると WindowServer 内のパネル接続状態がずれたまま残り、次のOFFで
-  構成から外れるだけでパネルの電源が切れない（画面が点いたまま）。OFFのまま蓋を開閉した後に起きることを実機で確認した。
-- 内蔵がOFFのときにメニューから終了すると、復帰を確認してから終了する。60秒たっても戻らなければ終了を取りやめる。
-- `--restore` と `--verify-restore` も NSApplication で回す。素の `RunLoop` だと、自分で構成変更を確定させた後に
-  画面の変更通知が処理されず、外部ディスプレイを抜いても一覧に残り続けた（仮想ディスプレイで再現・確認）。
+1. Send an enable request about once a second, and keep going until the restore is confirmed against
+   reality.
+2. After 3 consecutive failures, power-cycle the displays (`pmset displaysleepnow` -> declare user
+   activity after 3 seconds to wake them). No enable requests are sent for 6 seconds afterward
+   (sending one while asleep blocks for up to 10 seconds waiting on WindowServer to reconfigure, and
+   then fails with 1014). Up to 2 power cycles.
+3. If it still hasn't come back, the menu shows "close the lid, wait a few seconds, then open it".
+   Enable requests keep being retried regardless.
 
-### 実機検証（2026-09-23, Mac15,12 / macOS 26.7）
+Other measures baked in:
 
-| シナリオ | コマンド | 結果 |
+- Re-evaluates immediately on a sleep-wake notification.
+- Waits 3 seconds after an external display disappears from the list before restoring the built-in
+  display. USB-C monitors briefly disconnect and reconnect on wake (about 0.7s on real hardware);
+  restoring during that window would cause "the built-in display flashes on and immediately turns
+  off again". No wait if there's no external display at launch.
+- An external display that's asleep still counts as "connected"; the built-in display is only
+  restored once it disappears from the list (e.g. the cable is unplugged). Waiting on the sleep
+  notification itself was tried and abandoned — the external's sleep sometimes becomes visible
+  before the notification arrives, causing a premature restore. Auto-OFF only fires when a new
+  external display connects; waking from sleep doesn't count as a new connection.
+- The built-in panel is treated as "ON" while it's merely display-asleep (it's still in the online
+  list), so idle sleep with no external display doesn't trigger a restore attempt.
+- If an enable request was accepted but never applied (WindowServer logs `Failed to plug display 1`)
+  and the panel came back through the power-cycle restore path instead, it power-cycles once more
+  while ON. That restore path leaves WindowServer's internal panel connection state out of sync — the
+  next disable only drops it from the configuration without actually cutting power (the screen stays
+  lit). Confirmed on real hardware to happen after opening and closing the lid while the panel was off.
+- Quitting from the menu while the built-in display is off waits for the restore to be confirmed
+  first. If it doesn't come back within 60 seconds, the quit is cancelled.
+- `--restore` and `--verify-restore` also run on `NSApplication` rather than a bare `RunLoop`. A bare
+  run loop doesn't process screen-change notifications after this process commits its own
+  configuration change, so an unplugged external display stayed in the online list (reproduced and
+  confirmed with a virtual display).
+
+### Real-hardware verification (2026-09-23, Mac15,12 / macOS 26.7)
+
+| Scenario | Command | Result |
 |---|---|---|
-| 外部接続のままONに戻す | `--verify-restore --confirm-reboot-risk` | 1001 が4回 → 再通電1回 → 要求から16.5秒で復帰 |
-| OFFのまま外部を抜く | `--verify-restore --confirm-reboot-risk --after-unplug` | 画面なしを検知 → 1001 が3回 → 再通電1回 → 抜いてから約10秒で復帰（3秒の猶予を入れる前の計測） |
+| Restore to ON with the external still connected | `--verify-restore --confirm-reboot-risk` | 1001 four times -> one power cycle -> restored 16.5s after the request |
+| Restore after unplugging the external while OFF | `--verify-restore --confirm-reboot-risk --after-unplug` | detected zero screens -> 1001 three times -> one power cycle -> restored about 10s after the unplug (measured before the 3-second grace period was added) |
 
-macOS を更新したら、外部ディスプレイと電源をつなぎ、蓋を開けた状態で、上の2つを再確認すること。
+### Verifying the restore procedure on your Mac
 
-### 注意
+The disable feature (`OFF`) is only enabled on Mac model + macOS build combinations that have been
+confirmed, on real hardware, to actually restore correctly — see the section above for why. The app
+ships with just one verified entry (the author's own MacBook Air M3 on macOS 26.7). On every other
+machine, OFF stays disabled (the menu item is grayed out) until you verify it yourself:
 
-- 内蔵がOFFのときにアプリを強制終了（`kill -9` やアクティビティモニタの強制終了）しないこと。強制終了すると、戻す要求を送るプロセスがいなくなる。
-  強制終了してしまったら、アプリを起動し直すか `--restore` を実行する（起動時に、OFFのままのパネルを検知して戻す）。
-- 画面が真っ暗のまま戻らないときは、蓋を閉じて数秒後に開く（アプリか `--restore` が動いていれば、その後の要求で戻る）。
+```bash
+.build/release/AutoBlackout --verify-restore --confirm-reboot-risk
+```
 
-## 動作要件
+This disables the built-in display once and checks whether the app's own restore procedure (above)
+brings it back. **If it doesn't come back, a reboot is required** — only run this with an external
+display and power connected, the lid open, and you watching. On success, this exact Mac model +
+macOS build is remembered (in `UserDefaults`) as verified, and the OFF feature becomes available.
 
-- macOS 13 (Ventura) 以降
-- Apple Silicon（内蔵ディスプレイの完全切断はApple Siliconのみ対応）
+Also re-run this after every macOS update, on any machine, verified or not — a build change means
+the WindowServer behavior underneath hasn't been re-checked, so the app requires it to be
+re-verified again (see the allowlist's `osBuild` matching in
+[PrivateDisplayAPI.swift](Sources/AutoBlackout/PrivateDisplayAPI.swift)).
 
-## ビルド
+Add `--after-unplug` to instead verify the restore that happens when the external display is
+unplugged while OFF, rather than requesting a restore yourself.
 
-開発時の動作確認用（日常的に使うアプリとしては次の「パッケージング」を使うこと）:
+### Notes
+
+- Don't force-quit the app (`kill -9`, or Force Quit from Activity Monitor) while the built-in
+  display is off — that kills the process that would otherwise send the restore request. If you did
+  force-quit it, relaunch the app or run `--restore` (it detects a still-disabled panel at launch and
+  restores it).
+- If the screen stays black and doesn't come back, close the lid and reopen it after a few seconds
+  (the app, or `--restore`, will pick up from there if either is running).
+
+## Building
+
+For development testing (use "Packaging" below for day-to-day use):
 
 ```bash
 swift build -c release
 .build/release/AutoBlackout
 ```
 
-生の実行ファイルを直接起動すると、`.app`版とは別のアプリとして「メニューバーに追加することを許可」
-（システム設定）に登録される。ビルドし直すたびに同じ場所を直接実行していると、そこにエントリが
-積み重なるので、開発中の一時的な確認以外では避けること。
+Running the raw binary directly registers a *separate* "allow in menu bar" entry in System Settings
+from the `.app` bundle. Rebuilding and directly running the same binary repeatedly stacks up entries
+there, so avoid this outside of quick development checks.
 
-## パッケージング（.appとして使う）
+## Packaging (as a .app)
 
 ```bash
 scripts/build-app.sh
 ```
 
-`.build/release/AutoBlackout.app` が生成される（ad-hoc署名済み）。`/Applications` にコピーすれば、
-Finderやスポットライトから普通のアプリとして起動できる。
+Produces `.build/release/AutoBlackout.app` (ad-hoc signed). Copy it to `/Applications` to launch it
+like a normal app from Finder or Spotlight.
 
 ```bash
 cp -R .build/release/AutoBlackout.app /Applications/
 ```
 
-初回起動時にGatekeeperが「開発元を確認できません」と警告したら、Finderで右クリック→「開く」で許可する
-（Apple Developer証明書での署名ではなくad-hoc署名のため。個人利用のみを想定）。
+If Gatekeeper warns "can't verify the developer" on first launch, right-click it in Finder and choose
+"Open" to allow it (it's ad-hoc signed, not signed with an Apple Developer certificate — intended for
+personal use only).
 
-メニューバーから次のことができる:
+From the menu bar you can:
 
-- **ログイン時に自動的に起動** — `SMAppService` でログイン項目に登録/解除する
-  （システム設定 > 一般 > ログイン項目 からも確認・解除できる）。外部モニターを日常的に使うなら有効にしておく。
-- **AutoBlackoutについて** — バージョン情報を表示する標準Aboutパネル。
+- **Launch at login** — registers/unregisters a login item via `SMAppService` (also visible under
+  System Settings > General > Login Items). Worth enabling if you use an external monitor regularly.
+- **About AutoBlackout** — the standard About panel with version info.
 
-アイコンを作り直す場合は `swift scripts/make-icon.swift` を実行すると `Resources/AppIcon.icns` を再生成する
-（`scripts/build-app.sh` は既存の `.icns` をそのまま使うので、アイコンを変えない限り再実行不要）。
+To regenerate the icon, run `swift scripts/make-icon.swift`, which rewrites
+`Resources/AppIcon.icns` (`scripts/build-app.sh` reuses the existing `.icns`, so this only needs to
+be re-run if you change the icon).
 
-## テスト（実ディスプレイには触れない）
+## Tests (never touch a real display)
 
 ```bash
 swift test
 ```
 
-## 緊急復旧
+## Emergency recovery
 
-内蔵ディスプレイが戻らなくなった場合（SSH等から）:
+If the built-in display gets stuck off (e.g. from SSH):
 
 ```bash
 .build/release/AutoBlackout --restore
-# /Applications にインストール済みなら:
+# if installed to /Applications:
 /Applications/AutoBlackout.app/Contents/MacOS/AutoBlackout --restore
 ```
 
-戻らないと表示されたら、コマンドを実行したまま蓋を閉じ、5秒ほど待ってから開く。
+If it reports that it couldn't restore, keep the command running, close the lid, wait about 5
+seconds, then open it.
 
-ログ: `~/Library/Logs/AutoBlackout/recovery.log`（os_log サブシステム `io.github.yutsuki3.AutoBlackout` にも出力）
+Logs: `~/Library/Logs/AutoBlackout/recovery.log` (also written to the os_log subsystem
+`io.github.yutsuki3.AutoBlackout`).
 
-## 設計方針
+## Design
 
-- `AutoBlackoutCore/` — 実機に触れないロジック層（ユニットテスト対象）。
-  - `BlackoutController.swift` — 状態機械。「外部ゼロなのに内蔵が無効」を検知したら、復帰を実測で確認できるまで再試行する。
-    接続変更コールバック・1秒ポーリング・起動時自己修復・終了時復元のすべてがここを通る。
-  - `DisplayLogic.swift` / `DisplayTypes.swift` — スナップショットからの判定と、実機操作のプロトコル。
-- `AutoBlackout/` — 実機との接点。
-  - `PrivateDisplayAPI.swift` — 非公開API呼び出しをここに隔離。
-  - `LiveSystem.swift` — プロトコルの本番実装（CG・UserDefaults・ログファイル）。
-  - `DisplayMonitor.swift` — 構成変更コールバックの登録のみ。
-  - `AppDelegate.swift` / `main.swift` — UI層と `--restore` 緊急復旧モード。
-- `Resources/` — `Info.plist`・`AppIcon.icns`（.appバンドルの素材）。
-- `scripts/` — `build-app.sh`（.appバンドルの組み立て＋ad-hoc署名）、`make-icon.swift`（アイコン生成）。
+- `AutoBlackoutCore/` — the logic layer, unit-tested, that never touches real hardware.
+  - `BlackoutController.swift` — the state machine. Detects "zero external displays but the built-in
+    one is disabled" and retries the restore until it's confirmed against reality. Every path —
+    reconfiguration callbacks, the 1-second poll, self-healing at launch, and restoring on quit —
+    goes through here.
+  - `DisplayLogic.swift` / `DisplayTypes.swift` — pure decisions made from a snapshot, and the
+    protocol abstraction over real hardware.
+- `AutoBlackout/` — the real-hardware surface.
+  - `PrivateDisplayAPI.swift` — isolates the private API calls, and the per-host restore-verification
+    allowlist.
+  - `LiveSystem.swift` — the production implementation of the protocols (CG, UserDefaults, log file).
+  - `DisplayMonitor.swift` — registers the reconfiguration callback only.
+  - `AppDelegate.swift` / `main.swift` — the UI layer and the `--restore` emergency-recovery mode.
+- `Resources/` — `Info.plist` and `AppIcon.icns` (the `.app` bundle's assets).
+- `scripts/` — `build-app.sh` (assembles and ad-hoc signs the `.app` bundle) and `make-icon.swift`
+  (generates the icon).
 
-参考にした実装: [alin23/Lunar](https://github.com/alin23/Lunar)（BlackOut機能の設計思想）、
-[0xruth1ezz/screen-toggle](https://github.com/0xruth1ezz/screen-toggle)（非公開APIの呼び出し方・安全装置の作り方）。
+Referenced while building this: [alin23/Lunar](https://github.com/alin23/Lunar) (the design of its
+BlackOut feature) and [0xruth1ezz/screen-toggle](https://github.com/0xruth1ezz/screen-toggle) (how to
+call the private API and build in safety checks).
+
+## License
+
+MIT — see [LICENSE](LICENSE).
