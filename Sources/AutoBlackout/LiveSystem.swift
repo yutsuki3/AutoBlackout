@@ -1,12 +1,21 @@
+import AppKit
 import AutoBlackoutCore
 import CoreGraphics
 import Foundation
+import IOKit.pwr_mgt
 import os
 
 /// 本物のディスプレイに対する `DisplaySystem` 実装。実機に作用するのはこのクラスの setEnabled だけ。
 final class LiveDisplaySystem: DisplaySystem {
+    /// `--verify-restore` 専用: `isDisableAllowed` が false のまま無効化を許可する。
+    private let allowsDisableForVerification: Bool
+
+    init(allowsDisableForVerification: Bool = false) {
+        self.allowsDisableForVerification = allowsDisableForVerification
+    }
+
     var isToggleAvailable: Bool { PrivateDisplayAPI.isAvailable }
-    var isDisableSupported: Bool { PrivateDisplayAPI.isDisableAllowed }
+    var isDisableSupported: Bool { PrivateDisplayAPI.isDisableAllowed || allowsDisableForVerification }
     var lastErrorDescription: String? { PrivateDisplayAPI.lastError }
 
     func snapshot() -> DisplaySnapshot {
@@ -17,7 +26,31 @@ final class LiveDisplaySystem: DisplaySystem {
     }
 
     func setEnabled(_ enabled: Bool, for displayID: CGDirectDisplayID) -> Bool {
-        PrivateDisplayAPI.setEnabled(enabled, for: displayID)
+        PrivateDisplayAPI.setEnabled(enabled, for: displayID, overrideDisableBlock: allowsDisableForVerification)
+    }
+
+    /// `pmset displaysleepnow`（root不要）で全ディスプレイをスリープさせ、数秒後にユーザー操作を宣言して起こす。
+    /// 画面ロックの設定によっては、復帰後にロック画面が出る。
+    func powerCycleDisplays() {
+        let pmset = Process()
+        pmset.executableURL = URL(fileURLWithPath: "/usr/bin/pmset")
+        pmset.arguments = ["displaysleepnow"]
+        do {
+            try pmset.run()
+        } catch {
+            return
+        }
+        // メインスレッドが CG の呼び出しで塞がっていても起こせるよう、別キューで実行する。
+        DispatchQueue.global().asyncAfter(deadline: .now() + 3) {
+            var assertion: IOPMAssertionID = 0
+            let result = IOPMAssertionDeclareUserActivity(
+                "AutoBlackout: wake displays to re-power the built-in panel" as CFString,
+                kIOPMUserActiveLocal,
+                &assertion
+            )
+            guard result == kIOReturnSuccess else { return }
+            DispatchQueue.global().asyncAfter(deadline: .now() + 5) { IOPMAssertionRelease(assertion) }
+        }
     }
 
     private static func info(_ id: CGDirectDisplayID) -> DisplayInfo {
@@ -40,6 +73,43 @@ final class LiveDisplaySystem: DisplaySystem {
         var ids = [CGDirectDisplayID](repeating: 0, count: Int(capacity))
         guard CGGetOnlineDisplayList(capacity, &ids, &count) == .success else { return [] }
         return Array(ids.prefix(Int(min(count, capacity))))
+    }
+}
+
+/// コマンドとして動くモード（`--restore` 等）のメインループ。UI は出さないが NSApplication で回す。
+///
+/// 素の `RunLoop.main.run()` だと、自分で構成変更（無効化など）を確定させた後は WindowServer からの
+/// 画面変更通知が処理されず、`CGGetOnlineDisplayList` が古いまま残る（外部ディスプレイを抜いても一覧に残る）。
+/// 2026-09-23 に、仮想ディスプレイを無効化した後に別の仮想ディスプレイが見えないことで再現・確認した。
+enum HeadlessMainLoop {
+    static func run() -> Never {
+        NSApplication.shared.setActivationPolicy(.prohibited)
+        NSApplication.shared.run()
+        exit(1)
+    }
+}
+
+/// ログに残す実行環境。無効化後に戻せるかは機種（M3 の MacBook Air 等）と macOS のビルドに依存する。
+enum HostInfo {
+    static var model: String {
+        var size = 0
+        guard sysctlbyname("hw.model", nil, &size, nil, 0) == 0, size > 0 else { return "unknown" }
+        var buffer = [CChar](repeating: 0, count: size)
+        guard sysctlbyname("hw.model", &buffer, &size, nil, 0) == 0 else { return "unknown" }
+        return String(cString: buffer)
+    }
+
+    static var summary: String {
+        "model=\(model) os=\(ProcessInfo.processInfo.operatingSystemVersionString)"
+    }
+
+    /// 蓋が閉じているか。取得できなければ nil。
+    static var isLidClosed: Bool? {
+        let root = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPMrootDomain"))
+        guard root != 0 else { return nil }
+        defer { IOObjectRelease(root) }
+        let value = IORegistryEntryCreateCFProperty(root, "AppleClamshellState" as CFString, kCFAllocatorDefault, 0)
+        return value?.takeRetainedValue() as? Bool
     }
 }
 
@@ -82,8 +152,11 @@ final class FileEventLogger: EventLogger {
     private let osLog = Logger(subsystem: "io.github.yutsuki3.AutoBlackout", category: "recovery")
     private let url: URL?
     private let formatter = ISO8601DateFormatter()
+    /// true なら標準出力にも書く（`--restore` 用）。
+    private let echo: Bool
 
-    init() {
+    init(echo: Bool = false) {
+        self.echo = echo
         do {
             try FileManager.default.createDirectory(at: Self.directory, withIntermediateDirectories: true)
             url = Self.directory.appendingPathComponent("recovery.log")
@@ -95,6 +168,7 @@ final class FileEventLogger: EventLogger {
     func log(_ message: String) {
         let message = message.replacingOccurrences(of: "\n", with: " ")
         osLog.notice("\(message, privacy: .public)")
+        if echo { print(message) }
         guard let url else { return }
 
         if let size = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? Int,

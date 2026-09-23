@@ -12,6 +12,11 @@ public enum DisplayLogic {
         snapshot.all?.first { $0.isBuiltin && !$0.isHeadlessFallback }?.id
     }
 
+    /// 接続されている外部ディスプレイ（スリープ中も含む）。「新しく接続されたか」の判定に使う。
+    public static func presentExternals(in snapshot: DisplaySnapshot) -> Set<CGDirectDisplayID> {
+        Set(snapshot.online.filter { !$0.isBuiltin && !$0.isHeadlessFallback && $0.isOnline }.map(\.id))
+    }
+
     /// 実際に映像を出せる外部ディスプレイ。
     public static func usableExternals(in snapshot: DisplaySnapshot) -> Set<CGDirectDisplayID> {
         Set(snapshot.online.filter {

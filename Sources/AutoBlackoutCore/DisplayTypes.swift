@@ -64,6 +64,11 @@ public protocol DisplaySystem: AnyObject {
     func snapshot() -> DisplaySnapshot
     /// - Returns: APIが成功を返したか。**成功が返っても実際に適用されたとは限らない**。
     func setEnabled(_ enabled: Bool, for displayID: CGDirectDisplayID) -> Bool
+    /// 全ディスプレイを一度スリープさせて起こし、無効化中の内蔵パネルを再通電させる。完了を待たずに戻る。
+    ///
+    /// M3 の MacBook Air などでは、無効化するとパネルがハードウェア的に切断扱い（IOMFB "hot plug 0"）になり、
+    /// 再通電（"hot plug 1"）するまで WindowServer は有効化要求を 1001 で拒否する。
+    func powerCycleDisplays()
 }
 
 /// プロセスを跨いで残す必要がある状態。アプリが落ちて再起動しても復帰できるようにするため。

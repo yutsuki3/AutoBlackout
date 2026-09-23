@@ -23,6 +23,12 @@ public final class BlackoutController {
 
     public var isAutoModeEnabled = true
 
+    /// 画面全体がスリープ中か。UI 側が NSWorkspace の screensDidSleep / screensDidWake から設定する。
+    /// この間は、スリープしている外部ディスプレイも使えるものとみなし、内蔵を戻さない（アイドルスリープのたびに
+    /// 戻して再びOFFにすると、M3 では毎回の再通電で画面が起きてしまう）。
+    /// 起きている外部ディスプレイが見えたら、通知を取りこぼしていても自動で false に戻す。
+    public var displaysAsleep = false
+
     /// 状態が変化した可能性があるたびにUI側へ通知する。
     public var onStateChange: (() -> Void)?
 
@@ -32,6 +38,18 @@ public final class BlackoutController {
 
     public private(set) var restorePending = false
     public private(set) var isChanging = false
+    /// ディスプレイの再通電を使い切っても復帰しない。利用者に蓋の開閉を頼む必要がある。
+    public private(set) var needsLidCycle = false
+
+    /// 最初の再通電までに許す失敗回数（約1秒に1回試行）。
+    public static let failuresBeforeFirstPowerCycle = 3
+    /// 再通電どうしの間に許す失敗回数。スリープ→復帰に数秒かかるので間隔を空ける。
+    public static let failuresBetweenPowerCycles = 20
+    /// 1回の復帰処理で自動的に再通電する上限。画面の点滅を繰り返さないため。
+    public static let maxPowerCycles = 2
+    /// 再通電を始めてから次の有効化要求までの待ち時間。スリープ中に要求すると、WindowServer の再構成待ちで
+    /// 最大10秒ブロックした末に 1014 で失敗し、その間は画面を起こす処理も遅れる（実機で確認）。
+    public static let powerCycleSettleDelay: TimeInterval = 6
 
     private let system: DisplaySystem
     private let store: DisplayStateStore
@@ -42,9 +60,14 @@ public final class BlackoutController {
     /// 無効化した時点で使えていた外部ディスプレイ。これが全部消えたら、
     /// 後から現れた別のディスプレイ（仮想ディスプレイ等）があっても復帰させる。
     private var externalsAtDisable: Set<CGDirectDisplayID>?
-    /// 自動OFFは「外部ゼロ → 外部あり」の変化時だけ行う（手動でONに戻した直後に即OFFにしないため）。
+    /// 前回の `evaluate` で外部ディスプレイが接続されていたか（スリープ中も接続扱い）。
+    /// 自動OFFは「接続ゼロ → 接続あり」の変化時だけ行う。スリープからの復帰は新しい接続とみなさない。
     private var previousHadExternal: Bool?
+    /// 外部ディスプレイが新しく接続され、自動OFFを待っている。接続時にスリープしていれば起きるまで待つ。
+    private var autoDisablePending = false
     private var restoreAttempts = 0
+    private var powerCycles = 0
+    private var failuresSincePowerCycle = 0
     private var lastLoggedState: String?
     private var loggedPanelUnknown = false
 
@@ -111,7 +134,7 @@ public final class BlackoutController {
             logger.log("launch: panel \(panel) is missing from online list; adopting it as managed")
             managedDisplay = panel
         }
-        previousHadExternal = !DisplayLogic.usableExternals(in: snapshot).isEmpty
+        previousHadExternal = !DisplayLogic.presentExternals(in: snapshot).isEmpty
         evaluate(reason: "launch")
     }
 
@@ -120,9 +143,13 @@ public final class BlackoutController {
         let snapshot = system.snapshot()
         let panel = builtInPanelID(in: snapshot)
         let usable = DisplayLogic.usableExternals(in: snapshot)
-        let hasExternal = externalsAtDisable.map { !usable.isDisjoint(with: $0) } ?? !usable.isEmpty
-        let justConnected = previousHadExternal == false && !usable.isEmpty
-        previousHadExternal = !usable.isEmpty
+        let present = DisplayLogic.presentExternals(in: snapshot)
+        if displaysAsleep, !usable.isEmpty { displaysAsleep = false }
+        let available = displaysAsleep ? present : usable
+        let hasExternal = externalsAtDisable.map { !available.isDisjoint(with: $0) } ?? !available.isEmpty
+        if previousHadExternal == false, !present.isEmpty { autoDisablePending = true }
+        if present.isEmpty || !isAutoModeEnabled { autoDisablePending = false }
+        previousHadExternal = !present.isEmpty
 
         logStateIfChanged(reason: reason, snapshot: snapshot, panel: panel)
 
@@ -141,7 +168,8 @@ public final class BlackoutController {
         let enabled = DisplayLogic.isPanelEnabled(panel, in: snapshot)
 
         if managedDisplay != nil, !hasExternal, !restorePending {
-            logger.log("recovery required (\(reason)): no usable external display remains; usable=\(sorted(usable)) atDisable=\(sorted(externalsAtDisable))")
+            logger.log("recovery required (\(reason)): no usable external display remains; usable=\(sorted(usable)) "
+                + "present=\(sorted(present)) displaysAsleep=\(displaysAsleep) atDisable=\(sorted(externalsAtDisable))")
             restorePending = true
         }
 
@@ -156,7 +184,8 @@ public final class BlackoutController {
             clearManagedState()
         }
 
-        if isAutoModeEnabled, justConnected, enabled {
+        if isAutoModeEnabled, autoDisablePending, enabled, !usable.isEmpty, !displaysAsleep {
+            autoDisablePending = false
             logger.log("auto: external display connected \(sorted(usable))")
             disable(panel, usable: usable, trigger: "auto")
             return
@@ -187,6 +216,7 @@ public final class BlackoutController {
     /// 手動の「ONに戻す」。一覧上は既にONに見えても、必ず有効化要求を送る。
     public func requestRestore(trigger: String) {
         logger.log("\(trigger) restore requested")
+        autoDisablePending = false
         restorePending = true
         evaluate(reason: trigger)
     }
@@ -270,8 +300,43 @@ public final class BlackoutController {
             if restoreAttempts <= 5 || restoreAttempts % 30 == 0 {
                 logger.log("restore unconfirmed: panel \(panel); retrying")
             }
+            if powerCycleIfStillFailing() {
+                isChanging = true
+                scheduler.schedule(after: Self.powerCycleSettleDelay) { [weak self] in
+                    self?.isChanging = false
+                    self?.evaluate(reason: "after-power-cycle")
+                }
+                return
+            }
             evaluate(reason: "verify-restore")
         }
+    }
+
+    /// 有効化要求が通らない状態が続いたら、ディスプレイを再通電させる。上限に達したら蓋の開閉を案内する。
+    ///
+    /// M3 の MacBook Air (Mac15,12 / macOS 26.7) で確認した事象: 無効化直後に IOMFB が "Display 1 hot plug 0" を出し、
+    /// 以後 WindowServer は有効化要求を事前チェックで 1001 として拒否する。ディスプレイのスリープ→復帰や蓋の開閉で
+    /// パネルが再通電（"hot plug 1"）した後に有効化要求を送ると通る（2026-09-23 実機で確認）。再通電だけでは戻らない。
+    /// - Returns: 再通電を始めたか。
+    private func powerCycleIfStillFailing() -> Bool {
+        failuresSincePowerCycle += 1
+        let threshold = powerCycles == 0 ? Self.failuresBeforeFirstPowerCycle : Self.failuresBetweenPowerCycles
+        guard failuresSincePowerCycle >= threshold else { return false }
+        failuresSincePowerCycle = 0
+
+        guard powerCycles < Self.maxPowerCycles else {
+            if !needsLidCycle {
+                needsLidCycle = true
+                logger.log("restore still failing after \(powerCycles) display power cycle(s); "
+                    + "waiting for the lid to be closed and reopened (retries continue)")
+                onStateChange?()
+            }
+            return false
+        }
+        powerCycles += 1
+        logger.log("restore failing: power-cycling displays #\(powerCycles) to re-power the panel")
+        system.powerCycleDisplays()
+        return true
     }
 
     private func clearManagedState() {
@@ -279,13 +344,16 @@ public final class BlackoutController {
         externalsAtDisable = nil
         restorePending = false
         restoreAttempts = 0
+        powerCycles = 0
+        failuresSincePowerCycle = 0
+        needsLidCycle = false
     }
 
     // MARK: - ログ
 
     private func logStateIfChanged(reason: String, snapshot: DisplaySnapshot, panel: CGDirectDisplayID?) {
         let state = "panel=\(describe(panel)) managed=\(describe(managedDisplay)) pending=\(restorePending) "
-            + "changing=\(isChanging) auto=\(isAutoModeEnabled) " + describe(snapshot)
+            + "changing=\(isChanging) auto=\(isAutoModeEnabled) asleep=\(displaysAsleep) " + describe(snapshot)
         guard state != lastLoggedState else { return }
         lastLoggedState = state
         logger.log("state (\(reason)): " + state)

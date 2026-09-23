@@ -22,24 +22,39 @@ enum PrivateDisplayAPI {
     /// このMac・このmacOSバージョンで切り替えAPIが利用可能かどうか。
     static var isAvailable: Bool { configureEnabled != nil }
 
-    /// 無効化（OFF）を許可するか。**恒久的に false。**
+    /// 無効化（OFF）を許可するか。
     ///
-    /// macOS 26.7 (25G229) の実機で、無効化は成功するが有効化が
-    /// `CGCompleteDisplayConfiguration` で kCGErrorFailure (1001) となり、
-    /// `.forAppOnly`/`.forSession` のどちらでも、プロセス終了・蓋の開閉・スリープ・ログアウトでも戻らず、
-    /// 再起動でしか復旧できないことを確認した（2026-09-23）。
-    /// 確実に戻せる手段が見つかるまで、無効化の呼び出し自体をここで遮断する。
-    static let isDisableAllowed = false
+    /// MacBook Air M3 (Mac15,12) / macOS 26.7 (25G229) で、無効化後の有効化が
+    /// `CGCompleteDisplayConfiguration` で kCGErrorIllegalArgument (1001) になり、再起動でしか戻らない事故が2回あった。
+    ///
+    /// 原因（ログと逆アセンブルで確認）:
+    /// - エントリーモデルの M3 は内蔵パネルの接続を外部ディスプレイ用に転用できる設計で、
+    ///   無効化するとパネルがハードウェア的に切断扱いになる（IOMFB "Display 1 hot plug 0"）。
+    /// - その状態では WindowServer (`configuration_engine::config_via_client_api`) が有効化要求を
+    ///   事前チェックで弾き、1001 を返す。確定オプション（`.permanently` 等）や同じトランザクションに
+    ///   他の変更を含めても、このチェックの結果は変わらない。
+    /// - ディスプレイのスリープ→復帰や蓋の開閉でパネルが再通電（"hot plug 1"）した後なら、有効化要求は通る。
+    ///
+    /// `BlackoutController` の復帰手順（再試行 → 再通電 → 蓋の開閉の案内）で戻ることを 2026-09-23 に実機で確認したので許可する:
+    /// - 外部接続のままONに戻す: 再通電1回で、要求から16.5秒で復帰。
+    /// - OFFのまま外部ディスプレイを抜く: 画面が1枚も無い状態から、再通電1回で、抜いてから約10秒で復帰。
+    /// macOS の更新後は `AutoBlackout --verify-restore --confirm-reboot-risk [--after-unplug]` で再確認すること。
+    static let isDisableAllowed = true
 
     /// 直近の失敗の内容（どの段階で何のエラーか）。成功時は nil。
     private(set) static var lastError: String?
 
     /// 指定したディスプレイの有効/無効を切り替える。
+    /// - Parameter overrideDisableBlock: `--verify-restore` 専用。`isDisableAllowed` が false でも無効化を通す。
     /// - Returns: 成功したかどうか。失敗の詳細は `lastError`。
     @discardableResult
-    static func setEnabled(_ enabled: Bool, for displayID: CGDirectDisplayID) -> Bool {
+    static func setEnabled(
+        _ enabled: Bool,
+        for displayID: CGDirectDisplayID,
+        overrideDisableBlock: Bool = false
+    ) -> Bool {
         lastError = nil
-        guard enabled || isDisableAllowed else {
+        guard enabled || isDisableAllowed || overrideDisableBlock else {
             lastError = "disable is blocked (isDisableAllowed=false)"
             return false
         }
