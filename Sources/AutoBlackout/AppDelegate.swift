@@ -1,5 +1,6 @@
 import AppKit
 import AutoBlackoutCore
+import ServiceManagement
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let logger = FileEventLogger()
@@ -20,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var toggleItem: NSMenuItem!
     private var restoreItem: NSMenuItem!
     private var autoModeItem: NSMenuItem!
+    private var loginItemItem: NSMenuItem!
     private var statusLabelItem: NSMenuItem!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -69,7 +71,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             autoModeItem.isEnabled = false
         }
 
+        loginItemItem = NSMenuItem(
+            title: "ログイン時に自動的に起動",
+            action: #selector(toggleLoginItem),
+            keyEquivalent: ""
+        )
+        loginItemItem.target = self
+        menu.addItem(loginItemItem)
+        updateLoginItemState()
+
         menu.addItem(.separator())
+        menu.addItem(NSMenuItem(title: "AutoBlackoutについて", action: #selector(showAbout), keyEquivalent: "").withTarget(self))
         menu.addItem(NSMenuItem(title: "ログを表示", action: #selector(openLogs), keyEquivalent: "").withTarget(self))
         menu.addItem(NSMenuItem(title: "終了", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
 
@@ -151,7 +163,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         monitor.stop()
     }
 
-    func menuWillOpen(_ menu: NSMenu) { refresh() }
+    func menuWillOpen(_ menu: NSMenu) {
+        refresh()
+        updateLoginItemState()
+    }
 
     @objc private func toggle() {
         controller.toggleManually()
@@ -168,6 +183,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func openLogs() {
         NSWorkspace.shared.open(FileEventLogger.directory)
+    }
+
+    @objc private func toggleLoginItem() {
+        do {
+            if SMAppService.mainApp.status == .enabled {
+                try SMAppService.mainApp.unregister()
+            } else {
+                try SMAppService.mainApp.register()
+            }
+        } catch {
+            logger.log("login item toggle failed: \(error.localizedDescription)")
+        }
+        updateLoginItemState()
+    }
+
+    @objc private func showAbout() {
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.orderFrontStandardAboutPanel(options: [
+            .credits: NSAttributedString(
+                string: "外部ディスプレイ接続時に内蔵ディスプレイを自動でOFFにするメニューバーアプリ。\n"
+                    + "個人利用目的。非公開APIを使用しているためMac App Storeには配布不可。",
+                attributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)]
+            ),
+        ])
+    }
+
+    private func updateLoginItemState() {
+        loginItemItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
     }
 
     private func refresh() {

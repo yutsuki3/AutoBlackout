@@ -81,10 +81,41 @@ macOS を更新したら、外部ディスプレイと電源をつなぎ、蓋�
 
 ## ビルド
 
+開発時の動作確認用（日常的に使うアプリとしては次の「パッケージング」を使うこと）:
+
 ```bash
 swift build -c release
 .build/release/AutoBlackout
 ```
+
+生の実行ファイルを直接起動すると、`.app`版とは別のアプリとして「メニューバーに追加することを許可」
+（システム設定）に登録される。ビルドし直すたびに同じ場所を直接実行していると、そこにエントリが
+積み重なるので、開発中の一時的な確認以外では避けること。
+
+## パッケージング（.appとして使う）
+
+```bash
+scripts/build-app.sh
+```
+
+`.build/release/AutoBlackout.app` が生成される（ad-hoc署名済み）。`/Applications` にコピーすれば、
+Finderやスポットライトから普通のアプリとして起動できる。
+
+```bash
+cp -R .build/release/AutoBlackout.app /Applications/
+```
+
+初回起動時にGatekeeperが「開発元を確認できません」と警告したら、Finderで右クリック→「開く」で許可する
+（Apple Developer証明書での署名ではなくad-hoc署名のため。個人利用のみを想定）。
+
+メニューバーから次のことができる:
+
+- **ログイン時に自動的に起動** — `SMAppService` でログイン項目に登録/解除する
+  （システム設定 > 一般 > ログイン項目 からも確認・解除できる）。外部モニターを日常的に使うなら有効にしておく。
+- **AutoBlackoutについて** — バージョン情報を表示する標準Aboutパネル。
+
+アイコンを作り直す場合は `swift scripts/make-icon.swift` を実行すると `Resources/AppIcon.icns` を再生成する
+（`scripts/build-app.sh` は既存の `.icns` をそのまま使うので、アイコンを変えない限り再実行不要）。
 
 ## テスト（実ディスプレイには触れない）
 
@@ -98,6 +129,8 @@ swift test
 
 ```bash
 .build/release/AutoBlackout --restore
+# /Applications にインストール済みなら:
+/Applications/AutoBlackout.app/Contents/MacOS/AutoBlackout --restore
 ```
 
 戻らないと表示されたら、コマンドを実行したまま蓋を閉じ、5秒ほど待ってから開く。
@@ -115,6 +148,8 @@ swift test
   - `LiveSystem.swift` — プロトコルの本番実装（CG・UserDefaults・ログファイル）。
   - `DisplayMonitor.swift` — 構成変更コールバックの登録のみ。
   - `AppDelegate.swift` / `main.swift` — UI層と `--restore` 緊急復旧モード。
+- `Resources/` — `Info.plist`・`AppIcon.icns`（.appバンドルの素材）。
+- `scripts/` — `build-app.sh`（.appバンドルの組み立て＋ad-hoc署名）、`make-icon.swift`（アイコン生成）。
 
 参考にした実装: [alin23/Lunar](https://github.com/alin23/Lunar)（BlackOut機能の設計思想）、
 [0xruth1ezz/screen-toggle](https://github.com/0xruth1ezz/screen-toggle)（非公開APIの呼び出し方・安全装置の作り方）。
