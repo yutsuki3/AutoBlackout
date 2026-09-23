@@ -18,10 +18,10 @@ was informed by how the projects below behave:
 - **[screen-toggle](https://github.com/0xruth1ezz/screen-toggle)** by 0xruth1ezz: a small menu bar app
   that toggles the built-in display and restores it when the external monitors disconnect (MIT).
 
-An AI coding assistant was used while building AutoBlackout, and it may have looked at the public source
-of these projects. No code was intentionally copied from them. The private symbols involved
-(`SLSConfigureDisplayEnabled`, `CGSConfigureDisplayEnabled`, `SLSGetDisplayList`) belong to macOS and are
-documented in many public places.
+No code was intentionally copied from these projects, but the author can't rule out that parts of
+the implementation resemble their public source, since the work was informed by how they behave. The
+private symbols involved (`SLSConfigureDisplayEnabled`, `CGSConfigureDisplayEnabled`,
+`SLSGetDisplayList`) belong to macOS and are documented in many public places.
 
 Because that can't be ruled out completely, the copyright and permission notice that both projects
 distribute is reproduced below, as the MIT License asks of anything that may contain portions of the

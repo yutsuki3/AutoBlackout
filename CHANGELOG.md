@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Changed
+- README opens with a short "Experimental" notice and has a "Before you use it" section: where it
+  has been verified, what can go wrong and how it recovers, compatibility, unsigned, no warranty and
+  no affiliation.
+
+### Changed
 - Credits rewritten to state plainly how Lunar and screen-toggle relate to this project (functionality
   informed by them, no code intentionally copied, not affiliated), and `THIRD_PARTY_NOTICES.md` added
   with their MIT license notices. The `.app` bundle now includes `LICENSE` and
