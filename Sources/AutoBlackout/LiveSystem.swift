@@ -151,7 +151,7 @@ enum AppDefaults {
 }
 
 /// Where state is stored across process boundaries, so a separate `--restore` process can read the
-/// same values. Uses a fixed suite name for that reason.
+/// same values. Uses the app's shared defaults domain (`AppDefaults.shared`) for that reason.
 final class UserDefaultsStateStore: DisplayStateStore {
     private let defaults: UserDefaults
 
