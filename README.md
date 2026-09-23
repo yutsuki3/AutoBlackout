@@ -10,10 +10,10 @@ It resolves the private APIs (`SLSConfigureDisplayEnabled` / `CGSConfigureDispla
 runtime with `dlsym`, so it can't be distributed through the Mac App Store, and a macOS update could
 break it at any time.
 
-> **Experimental.** Verified on one Mac so far (MacBook Air M3, macOS 26.7). It turns the built-in
-> display off with undocumented macOS APIs, so on some Macs the panel can stay dark until the displays
-> are power-cycled. The app tries to bring it back on its own, and `--restore` is there if it doesn't.
-> Details: [Before you use it](#before-you-use-it).
+> **Experimental.** Verified on: MacBook Air M3 (`Mac15,12`), macOS 26.7 (`25G229`). It turns the
+> built-in display off with undocumented macOS APIs, so on some Macs the panel can stay dark until the
+> displays are power-cycled. The app tries to bring it back on its own, and `--restore` is there if it
+> doesn't. Details: [Before you use it](#before-you-use-it).
 
 ## Features
 
@@ -51,20 +51,16 @@ Known limitations / ideas (contributions welcome):
 
 ## Before you use it
 
-- **Where it has been tested.** On exactly one Mac: a MacBook Air M3 (`Mac15,12`) with macOS 26.7
-  (`25G229`). On any other Mac or macOS build the "turn OFF" feature stays disabled until you verify it
-  yourself with `--verify-restore` (see [docs/HOST_VERIFICATION.md](docs/HOST_VERIFICATION.md)). A pass
-  is evidence for that Mac and that build only.
+- **Where it has been verified.** MacBook Air M3 (`Mac15,12`), macOS 26.7 (`25G229`). On any other Mac
+  or macOS build, the "turn OFF" feature stays disabled until you verify it yourself with
+  `--verify-restore` (see [docs/HOST_VERIFICATION.md](docs/HOST_VERIFICATION.md)). A pass applies to
+  that Mac and that macOS build only.
 - **What can go wrong.** On some Macs, after the built-in display is turned off, macOS won't turn it
-  back on until the displays are power-cycled or the lid is closed and reopened; before the recovery
-  procedure existed, that took a reboot. The app now retries, power-cycles the displays, and asks you
-  to cycle the lid. In testing on the Mac above that has worked every time, but it hasn't been tried
-  elsewhere. Keep the `--restore` command from [Emergency recovery](#emergency-recovery) handy.
+  back on until the displays are power-cycled or the lid is closed and reopened; in the worst case
+  that takes a reboot. The app retries, power-cycles the displays, and asks you to cycle the lid.
+  Keep the `--restore` command from [Emergency recovery](#emergency-recovery) handy.
 - **Compatibility.** A macOS update can break it, and every update needs re-verifying.
 - **Signing.** It isn't signed with a Developer ID or notarized, so macOS warns the first time you open it.
-- **How it was made.** Written with an AI coding assistant (Claude Code), with unit tests and the
-  author's use on that one Mac. It hasn't had an independent code review or security audit, and it's
-  young, so expect some rough edges.
 - **No warranty, no affiliation.** MIT-licensed, provided as is; not affiliated with Apple or with the
   projects in [Credits](#credits-and-independence).
 
