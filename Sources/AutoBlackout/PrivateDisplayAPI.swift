@@ -1,3 +1,4 @@
+import AutoBlackoutCore
 import CoreGraphics
 import Foundation
 
@@ -147,22 +148,11 @@ enum PrivateDisplayAPI {
     }
 }
 
-/// A specific Mac model + macOS build combination.
-struct HostKey: Hashable, CustomStringConvertible {
-    let model: String
-    let osBuild: String
-    var description: String { "\(model)/\(osBuild)" }
-}
-
 /// Tracks which exact (Mac model, macOS build) combinations are known to be able to restore the
 /// built-in display after disabling it, so `PrivateDisplayAPI.isDisableAllowed` can fail safe on
-/// everything else. See `PrivateDisplayAPI.isDisableAllowed` for why this exists.
+/// everything else. See `PrivateDisplayAPI.isDisableAllowed` for why this exists. The decision logic
+/// lives in `HostVerifier` (AutoBlackoutCore) so it can be unit-tested.
 enum HostVerification {
-    private static let defaults = UserDefaults(suiteName: "io.github.yutsuki3.AutoBlackout") ?? .standard
-    private static let verifiedHostDefaultsKey = "verifiedRestoreHost"
-
-    static var current: HostKey { HostKey(model: HostInfo.model, osBuild: HostInfo.osBuild) }
-
     /// Combinations confirmed on real hardware by the project and shipped with the app. A macOS
     /// update changes the build string, so this needs re-confirming (`--verify-restore`) after
     /// every update even on a listed model.
@@ -170,24 +160,31 @@ enum HostVerification {
         HostKey(model: "Mac15,12", osBuild: "25G229"),
     ]
 
-    static var isCurrentHostVerified: Bool {
-        if shippedAllowlist.contains(current) { return true }
-        return defaults.string(forKey: verifiedHostDefaultsKey) == current.description
+    static var current: HostKey { HostKey(model: HostInfo.model, osBuild: HostInfo.osBuild) }
+
+    private static var verifier: HostVerifier {
+        HostVerifier(
+            current: current,
+            shippedAllowlist: shippedAllowlist,
+            defaults: UserDefaults(suiteName: "io.github.yutsuki3.AutoBlackout") ?? .standard
+        )
     }
+
+    static var isCurrentHostVerified: Bool { verifier.isVerified }
 
     /// Where the current host's verification comes from, for `--diagnose`.
     static var sourceDescription: String {
-        if shippedAllowlist.contains(current) { return "verified (shipped allowlist)" }
-        if defaults.string(forKey: verifiedHostDefaultsKey) == current.description {
-            return "verified (locally, via --verify-restore)"
+        switch verifier.source {
+        case .shippedAllowlist: return "verified (shipped allowlist)"
+        case .localVerification: return "verified (locally, via --verify-restore)"
+        case .unverified: return "NOT verified (OFF feature disabled)"
         }
-        return "NOT verified (OFF feature disabled)"
     }
 
     /// Called after `AutoBlackout --verify-restore --confirm-reboot-risk` completes successfully:
     /// remembers that this exact machine + macOS build has been confirmed to restore correctly, so
     /// the disable feature can be used on it going forward.
     static func markCurrentHostVerified() {
-        defaults.set(current.description, forKey: verifiedHostDefaultsKey)
+        verifier.markVerified()
     }
 }

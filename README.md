@@ -123,6 +123,8 @@ Tests never touch a real display.
 - `AutoBlackoutCore/` — the logic layer, unit-tested, that never touches real hardware.
   - `BlackoutController.swift` — the state machine. Every path (reconfiguration callbacks, the
     1-second poll, self-healing at launch, restoring on quit) goes through here.
+  - `HostVerifier.swift` — decides whether the current Mac model + macOS build is verified for OFF
+    (injectable, unit-tested).
   - `DisplayLogic.swift` / `DisplayTypes.swift` — pure decisions made from a snapshot, and the
     protocol abstraction over real hardware.
 - `AutoBlackout/` — the real-hardware surface.

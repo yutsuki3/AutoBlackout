@@ -5,6 +5,11 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+- Host-verification decision logic moved into `AutoBlackoutCore` (`HostVerifier`) with an injectable
+  host, allowlist and storage, and covered by unit tests. An unidentifiable host (failed
+  `hw.model` / `kern.osversion` lookup) is now never treated as verified.
+
 ## [1.0.0] - 2026-09-23
 
 First public release.
