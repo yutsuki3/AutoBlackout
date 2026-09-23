@@ -50,6 +50,22 @@ public final class HostVerifier {
 
     public var isVerified: Bool { source != .unverified }
 
+    /// A build of this same Mac model that was verified earlier (shipped or recorded locally), when
+    /// the current build isn't. This is the "macOS was updated, verify again" case, as opposed to a
+    /// Mac that was never verified at all. `nil` if the host is verified or has no earlier record.
+    public var staleVerification: HostKey? {
+        guard current.isIdentifiable, !isVerified else { return nil }
+        if let shipped = shippedAllowlist
+            .filter({ $0.model == current.model && $0.osBuild != current.osBuild })
+            .min(by: { $0.osBuild < $1.osBuild }) {
+            return shipped
+        }
+        guard let recorded = defaults.string(forKey: Self.verifiedHostDefaultsKey),
+              let slash = recorded.lastIndex(of: "/") else { return nil }
+        let previous = HostKey(model: String(recorded[..<slash]), osBuild: String(recorded[recorded.index(after: slash)...]))
+        return previous.model == current.model && previous.osBuild != current.osBuild ? previous : nil
+    }
+
     /// Remembers that this exact machine + macOS build restored correctly. Ignored on a host that
     /// can't be identified. Replaces any earlier local verification (a macOS update changes the
     /// build, so the previous one no longer applies).

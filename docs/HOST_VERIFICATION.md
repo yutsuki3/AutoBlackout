@@ -108,7 +108,8 @@ back. **If it doesn't come back, a reboot is required** — only run this with a
 power connected, the lid open, and you watching. On success, this exact Mac model + macOS build is
 remembered as verified, and the OFF feature becomes available.
 
-Re-run this after every macOS update, on any machine, verified or not — a build change means the
+After a macOS update, the menu shows "macOS was updated — re-verify to enable OFF…" (and
+`--diagnose` reports it) until you do. Re-run this after every macOS update, on any machine, verified or not — a build change means the
 WindowServer behavior underneath hasn't been re-checked on it, so the app requires it to be
 re-verified again.
 

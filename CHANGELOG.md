@@ -5,6 +5,11 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- Re-verification notice: when a macOS update changes the build of a Mac model that was verified
+  earlier (shipped or locally), the menu says so and links to the verification steps, the launch log
+  records it, and `--diagnose` reports it. OFF stays disabled until re-verified, as before.
+
 ### Changed
 - Host-verification decision logic moved into `AutoBlackoutCore` (`HostVerifier`) with an injectable
   host, allowlist and storage, and covered by unit tests. An unidentifiable host (failed

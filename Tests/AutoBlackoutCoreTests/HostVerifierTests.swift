@@ -2,9 +2,9 @@ import AutoBlackoutCore
 import XCTest
 
 final class HostVerifierTests: XCTestCase {
-    private let shipped = HostKey(model: "Mac15,12", osBuild: "25G229")
-    private var suiteName = ""
-    private var defaults: UserDefaults!
+    let shipped = HostKey(model: "Mac15,12", osBuild: "25G229")
+    var suiteName = ""
+    var defaults: UserDefaults!
 
     override func setUp() {
         super.setUp()
@@ -17,7 +17,7 @@ final class HostVerifierTests: XCTestCase {
         super.tearDown()
     }
 
-    private func verifier(_ host: HostKey, allowlist: Set<HostKey>? = nil) -> HostVerifier {
+    func verifier(_ host: HostKey, allowlist: Set<HostKey>? = nil) -> HostVerifier {
         HostVerifier(current: host, shippedAllowlist: allowlist ?? [shipped], defaults: defaults)
     }
 
@@ -93,5 +93,51 @@ final class HostVerifierTests: XCTestCase {
 
     func testHostKeyDescriptionIsModelSlashBuild() {
         XCTAssertEqual(shipped.description, "Mac15,12/25G229")
+    }
+}
+
+// MARK: - Stale verification (macOS updated since the last verification)
+
+extension HostVerifierTests {
+    func testStaleFromShippedAllowlistWhenBuildChanged() {
+        let v = verifier(HostKey(model: "Mac15,12", osBuild: "25G300"))
+        XCTAssertEqual(v.staleVerification, shipped)
+    }
+
+    func testStaleFromLocalRecordWhenBuildChanged() {
+        let old = HostKey(model: "Mac14,2", osBuild: "24A335")
+        verifier(old).markVerified()
+        XCTAssertEqual(verifier(HostKey(model: "Mac14,2", osBuild: "24A400")).staleVerification, old)
+    }
+
+    func testNotStaleWhenNeverVerified() {
+        XCTAssertNil(verifier(HostKey(model: "Mac14,2", osBuild: "24A335")).staleVerification)
+    }
+
+    func testNotStaleWhenOnlyAnotherModelWasVerified() {
+        verifier(HostKey(model: "Mac14,2", osBuild: "24A335")).markVerified()
+        XCTAssertNil(verifier(HostKey(model: "Mac14,3", osBuild: "24A400")).staleVerification)
+    }
+
+    func testNotStaleWhenCurrentHostIsVerified() {
+        XCTAssertNil(verifier(shipped).staleVerification)
+    }
+
+    func testNotStaleForUnidentifiableHost() {
+        let host = HostKey(model: "unknown", osBuild: "25G229")
+        XCTAssertNil(verifier(host, allowlist: [HostKey(model: "unknown", osBuild: "25G000")]).staleVerification)
+    }
+
+    func testStaleClearsAfterReverifying() {
+        let old = HostKey(model: "Mac14,2", osBuild: "24A335")
+        let new = HostKey(model: "Mac14,2", osBuild: "24A400")
+        verifier(old).markVerified()
+        verifier(new).markVerified()
+        XCTAssertNil(verifier(new).staleVerification)
+    }
+
+    func testCorruptedLocalRecordIsIgnored() {
+        defaults.set("garbage", forKey: "verifiedRestoreHost")
+        XCTAssertNil(verifier(HostKey(model: "Mac14,2", osBuild: "24A335")).staleVerification)
     }
 }
