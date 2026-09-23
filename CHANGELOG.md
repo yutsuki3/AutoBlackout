@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-24
+
 ### Added
 - Japanese localization of the menu, alerts and restore overlay (`Resources/ja.lproj`, bundled into
   the `.app`); a test keeps the source strings and the translations in sync.
