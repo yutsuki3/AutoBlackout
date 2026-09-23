@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-09-24
+
 ### Fixed
 - With "Auto-OFF on external monitor connect" on, waking from sleep turned the built-in display off
   again. A system sleep/wake drops the external display out of the online list and brings it back,
