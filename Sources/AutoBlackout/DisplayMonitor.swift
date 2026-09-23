@@ -1,10 +1,10 @@
 import CoreGraphics
 import Foundation
 
-/// ディスプレイ構成変更のコールバックを受け取り、メインスレッドで通知する。
-/// 判定ロジックは持たない（判定は AutoBlackoutCore の BlackoutController.evaluate が行う）。
+/// Receives display reconfiguration callbacks and forwards them on the main thread. Holds no
+/// decision logic of its own (decisions are made by AutoBlackoutCore's `BlackoutController.evaluate`).
 final class DisplayMonitor {
-    /// 構成変更（完了側）のたびに呼ばれる。引数は変化したディスプレイIDとフラグ。
+    /// Called after each (completed) configuration change, with the changed display's ID and flags.
     var onChange: ((_ displayID: CGDirectDisplayID, _ flags: CGDisplayChangeSummaryFlags) -> Void)?
 
     private var registered = false
@@ -22,7 +22,7 @@ final class DisplayMonitor {
     }
 
     private static let callback: CGDisplayReconfigurationCallBack = { displayID, flags, userInfo in
-        // CGDisplayBeginConfigurationFlag は構成変更の「開始」通知なので無視し、完了後の状態だけ見る。
+        // Ignore the "begin" notification and only act on the post-change state.
         guard !flags.contains(.beginConfigurationFlag), let userInfo else { return }
         let monitor = Unmanaged<DisplayMonitor>.fromOpaque(userInfo).takeUnretainedValue()
         DispatchQueue.main.async {

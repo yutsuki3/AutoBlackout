@@ -1,17 +1,21 @@
 import CoreGraphics
 import Foundation
 
-/// 内蔵ディスプレイのON/OFFを決める状態機械。
+/// The state machine that decides whether the built-in display should be ON or OFF.
 ///
-/// 最優先ルール: **使える外部ディスプレイが無いのに内蔵ディスプレイが無効、という状態を放置しない。**
+/// Top rule: **never leave the built-in display disabled when there's no usable external display.**
 ///
-/// - 状態はメモリ上のフラグではなく、毎回 `DisplaySystem.snapshot()` の実測値から判断する
-///   （前回の事故では「OFFのつもり」のフラグとIDを失ったまま復帰できなくなった）。
-/// - 内蔵ディスプレイのIDは無効化するとオンライン一覧から消えるため、
-///   `managedDisplay`（自分が無効化したID）と `store.lastKnownBuiltInID`（永続化キャッシュ）で保持する。
-/// - APIが成功を返しても実際に適用されないことがあるので、`verifyDelay` 後に実測で検証する。
-///   復帰が確認できるまで `evaluate` のたびに再試行し続ける。
-/// - `evaluate` は接続変更コールバック・1秒ポーリング・起動時のすべてから呼ばれる、唯一の是正ループ。
+/// - State is never read from an in-memory flag; every decision is based on a fresh
+///   `DisplaySystem.snapshot()`. (A past accident lost the "we think it's OFF" flag and ID, leaving
+///   the app unable to restore anything.)
+/// - A disabled built-in display's ID disappears from the online list, so it's tracked separately in
+///   `managedDisplay` (the ID this instance disabled) and `store.lastKnownBuiltInID` (a persisted
+///   cache).
+/// - The API can report success without the change actually applying, so it's re-verified against
+///   reality after `verifyDelay`. Retries continue on every `evaluate` call until the restore is
+///   confirmed.
+/// - `evaluate` is the single correction loop called from the reconfiguration callback, the 1-second
+///   poll, and launch.
 public final class BlackoutController {
     public enum PanelStatus: Equatable {
         case apiUnavailable
@@ -23,7 +27,7 @@ public final class BlackoutController {
 
     public var isAutoModeEnabled = true
 
-    /// 状態が変化した可能性があるたびにUI側へ通知する。
+    /// Notifies the UI whenever the state may have changed.
     public var onStateChange: (() -> Void)?
 
     public private(set) var managedDisplay: CGDirectDisplayID? {
@@ -32,19 +36,23 @@ public final class BlackoutController {
 
     public private(set) var restorePending = false
     public private(set) var isChanging = false
-    /// ディスプレイの再通電を使い切っても復帰しない。利用者に蓋の開閉を頼む必要がある。
+    /// Power-cycling the display exhausted its budget without a restore. The user needs to cycle the lid.
     public private(set) var needsLidCycle = false
-    /// 復帰後に WindowServer のパネル接続状態を直すための再通電中（`startRepairCycle`）。終わるまで終了を待つこと。
+    /// A power cycle is in progress to fix up WindowServer's panel connection state after a restore
+    /// (`startRepairCycle`). Termination should wait for this to finish.
     public private(set) var isRepairing = false
 
-    /// 最初の再通電までに許す失敗回数（約1秒に1回試行）。
+    /// Failures allowed before the first power cycle (about one attempt per second).
     public static let failuresBeforeFirstPowerCycle = 3
-    /// 再通電どうしの間に許す失敗回数。スリープ→復帰に数秒かかるので間隔を空ける。
+    /// Failures allowed between power cycles. A sleep-to-wake cycle takes a few seconds, so this
+    /// spaces them out.
     public static let failuresBetweenPowerCycles = 20
-    /// 1回の復帰処理で自動的に再通電する上限。画面の点滅を繰り返さないため。
+    /// The cap on automatic power cycles per restore attempt, so the screen doesn't keep flickering.
     public static let maxPowerCycles = 2
-    /// 再通電を始めてから次の有効化要求までの待ち時間。スリープ中に要求すると、WindowServer の再構成待ちで
-    /// 最大10秒ブロックした末に 1014 で失敗し、その間は画面を起こす処理も遅れる（実機で確認）。
+    /// How long to wait after starting a power cycle before sending the next enable request.
+    /// Sending it while displays are asleep blocks for up to 10s waiting on WindowServer to
+    /// reconfigure and then fails with 1014, which also delays waking the screens (confirmed on
+    /// real hardware).
     public static let powerCycleSettleDelay: TimeInterval = 6
 
     private let system: DisplaySystem
@@ -52,27 +60,31 @@ public final class BlackoutController {
     private let scheduler: Scheduler
     private let logger: EventLogger
     private let verifyDelay: TimeInterval
-    /// 外部ディスプレイが一覧から消えてから、内蔵を戻すまでの猶予。USB-C のモニターはスリープ復帰時に一瞬切断されて
-    /// つながり直す（実機で約0.7秒）。その間に内蔵を戻すと、点灯してすぐ自動OFFで消える、を繰り返してしまう。
+    /// The grace period between an external display disappearing from the list and restoring the
+    /// built-in display. USB-C monitors can briefly disconnect and reconnect on wake (about 0.7s on
+    /// real hardware); restoring immediately would cause a flash of the built-in panel turning on
+    /// and auto-OFF turning it right back off, repeatedly.
     private let externalLossGrace: TimeInterval
     private let now: () -> Date
-    /// 外部ディスプレイが見えなくなった時刻。見えている間は nil。
+    /// When the external display was last seen missing. `nil` while it's visible.
     private var externalLostAt: Date?
 
-    /// 無効化した時点で使えていた外部ディスプレイ。これが全部消えたら、
-    /// 後から現れた別のディスプレイ（仮想ディスプレイ等）があっても復帰させる。
+    /// The external displays that were usable at the moment of disabling. If all of these disappear,
+    /// restore even if some other display (e.g. a virtual one) shows up afterward.
     private var externalsAtDisable: Set<CGDirectDisplayID>?
-    /// 前回の `evaluate` で外部ディスプレイが接続されていたか（スリープ中も接続扱い）。
-    /// 自動OFFは「接続ゼロ → 接続あり」の変化時だけ行う。スリープからの復帰は新しい接続とみなさない。
+    /// Whether an external display was connected on the previous `evaluate` call (counts as
+    /// connected while asleep). Auto-OFF only fires on the "zero -> some" transition; waking from
+    /// sleep doesn't count as a new connection.
     private var previousHadExternal: Bool?
-    /// 外部ディスプレイが新しく接続され、自動OFFを待っている。接続時にスリープしていれば起きるまで待つ。
+    /// A newly connected external display is waiting for auto-OFF. If it was asleep when it
+    /// connected, this waits until it wakes.
     private var autoDisablePending = false
     private var restoreAttempts = 0
     private var powerCycles = 0
     private var failuresSincePowerCycle = 0
-    /// 直近の有効化要求を WindowServer が受理したか。
+    /// Whether WindowServer accepted the most recent enable request.
     private var lastEnableAccepted = false
-    /// 受理されたのに反映されなかった有効化要求があった（WindowServer: "Failed to plug display 1"）。
+    /// An enable request was accepted but never applied (WindowServer logs "Failed to plug display 1").
     private var sawUnappliedEnable = false
     private var lastLoggedState: String?
     private var loggedExternalLossWait = false
@@ -100,10 +112,11 @@ public final class BlackoutController {
     public var isAPIAvailable: Bool { system.isToggleAvailable }
     public var isDisableSupported: Bool { system.isDisableSupported }
 
-    // MARK: - 状態の参照
+    // MARK: - State lookups
 
-    /// 内蔵パネルのID。無効化中でも見失わないよう、次の優先順で解決する:
-    /// 1. 自分が無効化したID  2. オンライン一覧の内蔵  3. 永続化キャッシュ  4. SLSGetDisplayList の内蔵
+    /// The built-in panel's ID. Resolved in this priority order so it's never lost while disabled:
+    /// 1. the ID this instance disabled  2. the online list's built-in display  3. the persisted
+    /// cache  4. `SLSGetDisplayList`'s built-in display.
     public func builtInPanelID(in snapshot: DisplaySnapshot? = nil) -> CGDirectDisplayID? {
         let snapshot = snapshot ?? system.snapshot()
         if let managedDisplay { return managedDisplay }
@@ -131,9 +144,10 @@ public final class BlackoutController {
         !DisplayLogic.usableExternals(in: system.snapshot()).isEmpty
     }
 
-    // MARK: - 入口
+    // MARK: - Entry points
 
-    /// 起動時の自己修復。前回のプロセスが内蔵を無効化したまま落ちていても、ここで検知して復帰させる。
+    /// Self-heals at launch: if a previous process crashed while the built-in display was disabled,
+    /// this detects it and restores it.
     public func launch() {
         let snapshot = system.snapshot()
         let panel = builtInPanelID(in: snapshot)
@@ -141,25 +155,30 @@ public final class BlackoutController {
 
         if managedDisplay == nil, let panel,
            !snapshot.online.contains(where: { $0.id == panel }) {
-            // 一覧から消えている = 何者かに無効化されている。終了時に確実に戻すため自分の管理下に置く。
+            // Missing from the online list means something disabled it. Adopt it so it's guaranteed
+            // to be restored on quit.
             logger.log("launch: panel \(panel) is missing from online list; adopting it as managed")
             managedDisplay = panel
         }
         previousHadExternal = !DisplayLogic.presentExternals(in: snapshot).isEmpty
-        // 起動時点で外部が無ければ猶予は要らない（前回のプロセスが無効化したまま落ちた等）。すぐに戻す。
+        // No grace period needed if there's no external display at launch (e.g. a previous process
+        // crashed while it was disabled) — restore right away.
         if previousHadExternal == false { externalLostAt = .distantPast }
         evaluate(reason: "launch")
     }
 
-    /// 現状を実測し、必要なら復帰（または自動OFF）を行う。何度呼んでも安全。
+    /// Measures the current state and restores (or auto-disables) as needed. Safe to call any
+    /// number of times.
     public func evaluate(reason: String) {
         let snapshot = system.snapshot()
         let panel = builtInPanelID(in: snapshot)
         let usable = DisplayLogic.usableExternals(in: snapshot)
         let present = DisplayLogic.presentExternals(in: snapshot)
-        // スリープ中の外部ディスプレイも「接続あり」とみなし、一覧から消えたときだけ内蔵を戻す。
-        // CGDisplayIsAsleep は Mac 側が画面をスリープさせたときに立つ。アイドルのディスプレイスリープで内蔵を戻すと、
-        // M3 では再通電で画面を起こしてしまう（スリープ通知より先に外部のスリープが見えることも実機で確認した）。
+        // An external display that's asleep still counts as "connected"; only restore once it
+        // disappears from the list entirely. `CGDisplayIsAsleep` is set when the Mac puts the screen
+        // to sleep. Restoring on an idle display sleep would wake the screen again via the power
+        // cycle on the M3 (and the external's sleep has been observed to appear before the sleep
+        // notification itself, on real hardware).
         let hasExternal = externalsAtDisable.map { !present.isDisjoint(with: $0) } ?? !present.isEmpty
         if previousHadExternal == false, !present.isEmpty { autoDisablePending = true }
         if present.isEmpty || !isAutoModeEnabled { autoDisablePending = false }
@@ -168,7 +187,8 @@ public final class BlackoutController {
             externalLostAt = nil
         } else if externalLostAt == nil {
             externalLostAt = now()
-            // 猶予が過ぎたら、コールバックやポーリングが無くても必ず評価し直す。
+            // Make sure evaluate runs again once the grace period elapses, even with no callback or
+            // poll in between.
             if externalLossGrace > 0 {
                 scheduler.schedule(after: externalLossGrace) { [weak self] in
                     self?.evaluate(reason: "external-loss-grace")
@@ -182,7 +202,7 @@ public final class BlackoutController {
         guard !isChanging else { return }
         guard isAPIAvailable, let panel else {
             if !loggedPanelUnknown {
-                // パネルが見つからない間は何もできない。痕跡だけは必ず残す。
+                // Nothing can be done while the panel can't be found. Still leave a trace in the log.
                 logger.log("cannot act (\(reason)): api=\(isAPIAvailable) panel=nil")
                 loggedPanelUnknown = true
             }
@@ -211,7 +231,7 @@ public final class BlackoutController {
         }
 
         if enabled, managedDisplay != nil {
-            // 他要因で内蔵が既に有効になっている。管理状態を解除する。
+            // The built-in display was enabled by something else; clear our managed state.
             logger.log("panel \(panel) observed enabled while managed; clearing managed state")
             clearManagedState()
         }
@@ -234,7 +254,7 @@ public final class BlackoutController {
         }
     }
 
-    /// 手動の「OFFにする」。外部ディスプレイが無い場合は拒否する。
+    /// The manual "turn OFF" action. Refused if there's no external display.
     public func requestDisable(trigger: String) {
         let snapshot = system.snapshot()
         guard !isChanging, !restorePending, isAPIAvailable, let panel = builtInPanelID(in: snapshot) else {
@@ -245,7 +265,8 @@ public final class BlackoutController {
         disable(panel, usable: DisplayLogic.usableExternals(in: snapshot), trigger: trigger)
     }
 
-    /// 手動の「ONに戻す」。一覧上は既にONに見えても、必ず有効化要求を送る。
+    /// The manual "turn ON" action. Always sends an enable request, even if the online list already
+    /// looks ON.
     public func requestRestore(trigger: String) {
         logger.log("\(trigger) restore requested")
         autoDisablePending = false
@@ -253,8 +274,10 @@ public final class BlackoutController {
         evaluate(reason: trigger)
     }
 
-    /// 終了直前に同期的に呼ぶ。自分が無効化したパネルが残っていれば戻す。
-    /// SIGKILL等ではここは呼ばれないので、次回起動時の `launch()` と永続化された managedDisplay が保険になる。
+    /// Called synchronously right before quitting. Restores the panel if this instance disabled it
+    /// and it's still off.
+    /// Not called on SIGKILL etc. — the next launch's `launch()` and the persisted `managedDisplay`
+    /// are the fallback for that.
     public func prepareForTermination() {
         let snapshot = system.snapshot()
         logger.log("terminate: managed=\(describe(managedDisplay)) " + describe(snapshot))
@@ -263,10 +286,11 @@ public final class BlackoutController {
         else { return }
         let ok = system.setEnabled(true, for: panel)
         logger.log("terminate: restore panel=\(panel) apiResult=\(ok)\(errorSuffix(ok))")
-        // 検証はできないので managedDisplay（永続化）は残す。次回起動時に有効と確認できれば解除される。
+        // No time to verify this, so leave `managedDisplay` (persisted) as-is; it clears once the
+        // next launch confirms the panel is actually enabled.
     }
 
-    // MARK: - 実際の切り替え
+    // MARK: - Actually switching
 
     private func disable(_ panel: CGDirectDisplayID, usable: Set<CGDirectDisplayID>, trigger: String) {
         guard system.isDisableSupported else {
@@ -279,7 +303,7 @@ public final class BlackoutController {
             onStateChange?()
             return
         }
-        // API呼び出し前に永続化しておく。直後にクラッシュしても次回起動時に復帰できる。
+        // Persist before making the API call, so a crash right after can still restore on next launch.
         externalsAtDisable = usable
         managedDisplay = panel
         isChanging = true
@@ -301,7 +325,8 @@ public final class BlackoutController {
         } else {
             logger.log("\(trigger) off verified: panel \(panel) is disabled")
         }
-        // 検証中に外部が外れていた場合などは、ここで即座に是正される。
+        // If the external display was disconnected while verification was in flight, this
+        // immediately corrects for it.
         evaluate(reason: "verify-off")
     }
 
@@ -332,7 +357,7 @@ public final class BlackoutController {
             onStateChange?()
         } else {
             if lastEnableAccepted { sawUnappliedEnable = true }
-            // 成功を返しても適用されないことがある。確認できるまで再試行を続ける。
+            // A reported success doesn't guarantee it applied. Keep retrying until it's confirmed.
             if restoreAttempts <= 5 || restoreAttempts % 30 == 0 {
                 logger.log("restore unconfirmed: panel \(panel); retrying")
             }
@@ -348,12 +373,15 @@ public final class BlackoutController {
         }
     }
 
-    /// 有効化要求が通らない状態が続いたら、ディスプレイを再通電させる。上限に達したら蓋の開閉を案内する。
+    /// Power-cycles the displays if enable requests keep getting rejected. Once the cap is reached,
+    /// asks the user to cycle the lid instead.
     ///
-    /// M3 の MacBook Air (Mac15,12 / macOS 26.7) で確認した事象: 無効化直後に IOMFB が "Display 1 hot plug 0" を出し、
-    /// 以後 WindowServer は有効化要求を事前チェックで 1001 として拒否する。ディスプレイのスリープ→復帰や蓋の開閉で
-    /// パネルが再通電（"hot plug 1"）した後に有効化要求を送ると通る（2026-09-23 実機で確認）。再通電だけでは戻らない。
-    /// - Returns: 再通電を始めたか。
+    /// Observed on a MacBook Air M3 (Mac15,12 / macOS 26.7): right after disabling, IOMFB logs
+    /// "Display 1 hot plug 0", and WindowServer rejects enable requests with 1001 in a precheck from
+    /// then on. Sending an enable request after the panel is re-powered ("hot plug 1") — via a
+    /// display sleep/wake or opening and closing the lid — succeeds (confirmed on real hardware,
+    /// 2026-09-23). A power cycle alone isn't enough; the follow-up enable request is what restores it.
+    /// - Returns: whether a power cycle was started.
     private func powerCycleIfStillFailing() -> Bool {
         failuresSincePowerCycle += 1
         let threshold = powerCycles == 0 ? Self.failuresBeforeFirstPowerCycle : Self.failuresBetweenPowerCycles
@@ -375,11 +403,14 @@ public final class BlackoutController {
         return true
     }
 
-    /// 有効化要求が受理されたのに反映されず（"Failed to plug display 1"）、画面の復帰経路でパネルが戻った場合の後始末。
+    /// Cleans up after an enable request was accepted but never applied ("Failed to plug display 1"),
+    /// and the panel came back via a screen-wake path instead.
     ///
-    /// この戻り方をすると WindowServer 内のパネル接続状態がずれたまま残り、次に無効化しても構成から外れるだけで
-    /// パネルの電源が切れない（画面が点いたまま）。OFFのまま蓋を開閉した後に起きることを実機で確認した（2026-09-23）。
-    /// ONの状態で一度再通電すると、CA の hotplug "in" が処理されてパネルが正しくつなぎ直される。
+    /// That kind of restore leaves WindowServer's panel connection state out of sync: the next
+    /// disable only drops it from the configuration without actually powering it off (screen stays
+    /// lit). Confirmed on real hardware to happen after opening and closing the lid while the panel
+    /// was off (2026-09-23). One more power cycle while ON lets the panel's hotplug "in" event get
+    /// processed and reconnects it correctly.
     private func startRepairCycle() {
         logger.log("panel came back without a successful enable; power-cycling once more to re-sync WindowServer")
         isRepairing = true
@@ -406,7 +437,7 @@ public final class BlackoutController {
         sawUnappliedEnable = false
     }
 
-    // MARK: - ログ
+    // MARK: - Logging
 
     private func logStateIfChanged(reason: String, snapshot: DisplaySnapshot, panel: CGDirectDisplayID?) {
         let state = "panel=\(describe(panel)) managed=\(describe(managedDisplay)) pending=\(restorePending) "

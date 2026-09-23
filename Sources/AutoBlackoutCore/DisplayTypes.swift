@@ -1,7 +1,8 @@
 import CoreGraphics
 import Foundation
 
-/// ある瞬間の1台のディスプレイの状態。CGの各種 `CGDisplayIs*` の結果を値として保持する。
+/// A single display's state at one point in time. Holds the results of CG's various
+/// `CGDisplayIs*` calls as plain values.
 public struct DisplayInfo: Equatable {
     public var id: CGDirectDisplayID
     public var isBuiltin: Bool
@@ -32,19 +33,20 @@ public struct DisplayInfo: Equatable {
         self.model = model
     }
 
-    /// 全ディスプレイが消えた時にWindowServerが作る仮想ディスプレイ (vendor 'unkn' / model 'virt')。
-    /// 実際には何も映らないので「使える外部ディスプレイ」とみなしてはいけない。
+    /// The virtual display WindowServer creates when every real display disappears (vendor 'unkn' /
+    /// model 'virt'). Nothing actually shows on it, so it must never count as a usable external display.
     public var isHeadlessFallback: Bool {
         vendor == 0x756e_6b6e && model == 0x7669_7274
     }
 }
 
-/// ある瞬間のディスプレイ構成。
+/// A display configuration at one point in time.
 public struct DisplaySnapshot: Equatable {
-    /// `CGGetOnlineDisplayList` の結果。無効化した内蔵ディスプレイはここから消えることがある。
+    /// The result of `CGGetOnlineDisplayList`. A disabled built-in display can disappear from this.
     public var online: [DisplayInfo]
-    /// `SLSGetDisplayList`（非公開、無効化中のディスプレイも含む）の結果。取得できなければ nil。
-    /// 一覧に居ないIDの `CGDisplayIs*` は -1（=真）を返すことがあるので、あくまで補助情報。
+    /// The result of `SLSGetDisplayList` (private API; includes disabled displays too). `nil` if it
+    /// couldn't be resolved. `CGDisplayIs*` can return -1 (truthy) for an ID that isn't in this list,
+    /// so treat this as supplementary information only.
     public var all: [DisplayInfo]?
 
     public init(online: [DisplayInfo], all: [DisplayInfo]? = nil) {
@@ -53,33 +55,38 @@ public struct DisplaySnapshot: Equatable {
     }
 }
 
-/// 実際のディスプレイ操作の抽象。本番は CG + 非公開API、テストはモック。
+/// An abstraction over real display operations. Production uses CG + the private API; tests use a mock.
 public protocol DisplaySystem: AnyObject {
-    /// 有効/無効を切り替える非公開APIが解決できているか。
+    /// Whether the private API for toggling enabled state was resolved.
     var isToggleAvailable: Bool { get }
-    /// 無効化（OFF）してよいか。確実に元に戻せる保証が無い環境では false。
+    /// Whether disabling (turning OFF) is allowed. `false` in environments where restoring isn't
+    /// guaranteed to work.
     var isDisableSupported: Bool { get }
-    /// 直近の setEnabled の失敗内容（ログ用）。
+    /// The most recent `setEnabled` failure detail, for logging.
     var lastErrorDescription: String? { get }
     func snapshot() -> DisplaySnapshot
-    /// - Returns: APIが成功を返したか。**成功が返っても実際に適用されたとは限らない**。
+    /// - Returns: whether the API reported success. **Success being reported doesn't guarantee it
+    ///   actually applied.**
     func setEnabled(_ enabled: Bool, for displayID: CGDirectDisplayID) -> Bool
-    /// 全ディスプレイを一度スリープさせて起こし、無効化中の内蔵パネルを再通電させる。完了を待たずに戻る。
+    /// Puts every display to sleep and wakes it back up, re-powering a disabled built-in panel.
+    /// Returns without waiting for completion.
     ///
-    /// M3 の MacBook Air などでは、無効化するとパネルがハードウェア的に切断扱い（IOMFB "hot plug 0"）になり、
-    /// 再通電（"hot plug 1"）するまで WindowServer は有効化要求を 1001 で拒否する。
+    /// On the MacBook Air M3 and similar models, disabling makes the panel look
+    /// hardware-disconnected (IOMFB "hot plug 0"), and WindowServer rejects enable requests with
+    /// 1001 until it's re-powered ("hot plug 1").
     func powerCycleDisplays()
 }
 
-/// プロセスを跨いで残す必要がある状態。アプリが落ちて再起動しても復帰できるようにするため。
+/// State that needs to survive across processes, so a restore can still happen after the app crashes
+/// and restarts.
 public protocol DisplayStateStore: AnyObject {
-    /// 最後にオンライン一覧で確認できた内蔵ディスプレイのID。
+    /// The last built-in display ID confirmed on the online list.
     var lastKnownBuiltInID: CGDirectDisplayID? { get set }
-    /// このアプリが無効化し、まだ復帰を確認できていない内蔵ディスプレイのID。
+    /// The built-in display ID this app disabled and hasn't yet confirmed restored.
     var managedDisplayID: CGDirectDisplayID? { get set }
 }
 
-/// 遅延実行の抽象。テストでは時間を進める操作を明示的に行う。
+/// An abstraction over deferred execution. Tests advance time explicitly.
 public protocol Scheduler: AnyObject {
     func schedule(after seconds: TimeInterval, _ work: @escaping () -> Void)
 }

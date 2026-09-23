@@ -15,7 +15,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var recoveryTimer: Timer?
     private var terminationTimer: Timer?
 
-    /// 終了前の復帰を待つ上限。M3 では有効化要求が1回では通らず、再通電を挟んで10秒以上かかる。
+    /// How long to wait for the restore before quitting. On the M3, the enable request doesn't
+    /// succeed on the first try and, with a power cycle in between, can take 10+ seconds.
     private static let terminationRestoreTimeout: TimeInterval = 60
 
     private var statusItem: NSStatusItem!
@@ -36,22 +37,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.autoenablesItems = false
         menu.delegate = self
 
-        statusLabelItem = NSMenuItem(title: "内蔵ディスプレイ: ON", action: nil, keyEquivalent: "")
+        statusLabelItem = NSMenuItem(title: "Built-in display: ON", action: nil, keyEquivalent: "")
         statusLabelItem.isEnabled = false
         menu.addItem(statusLabelItem)
         menu.addItem(.separator())
 
         toggleItem = NSMenuItem(
-            title: "内蔵ディスプレイをOFFにする",
+            title: "Turn built-in display OFF",
             action: #selector(toggle),
             keyEquivalent: ""
         )
         toggleItem.target = self
         menu.addItem(toggleItem)
 
-        // 状態表示がどうであれ、常に押せる「有効化要求を送る」ボタン。
+        // Always clickable regardless of the current status: sends an enable request no matter what.
         restoreItem = NSMenuItem(
-            title: "内蔵ディスプレイを強制的に復元",
+            title: "Force-restore built-in display",
             action: #selector(forceRestore),
             keyEquivalent: ""
         )
@@ -59,7 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(restoreItem)
 
         autoModeItem = NSMenuItem(
-            title: "外部モニター接続で自動OFF",
+            title: "Auto-OFF on external monitor connect",
             action: #selector(toggleAutoMode),
             keyEquivalent: ""
         )
@@ -73,7 +74,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         loginItemItem = NSMenuItem(
-            title: "ログイン時に自動的に起動",
+            title: "Launch at login",
             action: #selector(toggleLoginItem),
             keyEquivalent: ""
         )
@@ -82,9 +83,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateLoginItemState()
 
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "AutoBlackoutについて", action: #selector(showAbout), keyEquivalent: "").withTarget(self))
-        menu.addItem(NSMenuItem(title: "ログを表示", action: #selector(openLogs), keyEquivalent: "").withTarget(self))
-        menu.addItem(NSMenuItem(title: "終了", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        menu.addItem(NSMenuItem(title: "About AutoBlackout", action: #selector(showAbout), keyEquivalent: "").withTarget(self))
+        menu.addItem(NSMenuItem(title: "Show Logs", action: #selector(openLogs), keyEquivalent: "").withTarget(self))
+        menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
 
         statusItem.menu = menu
 
@@ -95,7 +96,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         monitor.start()
 
-        // 蓋を開けた・スリープから復帰した直後はパネルが再通電しているので、ポーリングを待たずに評価する。
+        // Right after opening the lid or waking from sleep, the panel has just been re-powered, so
+        // evaluate immediately instead of waiting for the next poll.
         let center = NSWorkspace.shared.notificationCenter
         for name in [NSWorkspace.didWakeNotification, NSWorkspace.screensDidWakeNotification] {
             center.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
@@ -105,10 +107,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         logger.log("host: " + HostInfo.summary)
 
-        // 起動時の自己修復（前回のプロセスが無効化したまま落ちていた場合など）。
+        // Self-heal at launch (e.g. a previous process crashed while the display was disabled).
         controller.launch()
 
-        // コールバックが来ない・遅れる・順序が前後するケースへの保険として、1秒ごとに実測して是正する。
+        // A safety net for callbacks that never arrive, arrive late, or arrive out of order:
+        // re-evaluate and correct every second.
         let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
             self?.controller.evaluate(reason: "poll")
         }
@@ -120,13 +123,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard controller.managedDisplay != nil || controller.restorePending else {
-            // .forAppOnly の自動復元には頼らず、明示的に戻してから終了する。
+            // Don't rely on `.forAppOnly`'s automatic restore; restore explicitly before quitting.
             controller.prepareForTermination()
             return .terminateNow
         }
 
-        // 内蔵をOFFにしたまま終了すると、戻す要求を送るプロセスがいなくなる（2回目の事故）。
-        // 復帰手順を最後まで走らせ、戻ったのを確認してから終了する。戻らなければ終了を取りやめる。
+        // Quitting while the built-in display is off would leave nothing around to restore it.
+        // Run the restore procedure to completion and confirm it worked before quitting; cancel the
+        // quit if it doesn't come back.
         logger.log("terminate: restoring panel before quitting")
         controller.isAutoModeEnabled = false
         controller.requestRestore(trigger: "terminate")
@@ -145,7 +149,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.showQuitCancelledAlert()
             }
         }
-        // terminateLater の間はモーダル用のモードで回るので、common モードに登録する。
+        // Keep running in the common run loop mode, since terminateLater otherwise only pumps modal
+        // panel modes.
         RunLoop.main.add(timer, forMode: .common)
         terminationTimer = timer
         return .terminateLater
@@ -153,8 +158,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func showQuitCancelledAlert() {
         let alert = NSAlert()
-        alert.messageText = "内蔵ディスプレイを戻せなかったため、終了を中止しました"
-        alert.informativeText = "復帰の再試行は続けています。蓋を閉じて数秒後に開くと戻ることがあります。"
+        alert.messageText = "Couldn't restore the built-in display, so quitting was cancelled"
+        alert.informativeText = "Still retrying in the background. Closing the lid and reopening it "
+            + "after a few seconds sometimes brings it back."
         NSApp.activate(ignoringOtherApps: true)
         alert.runModal()
     }
@@ -203,8 +209,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.activate(ignoringOtherApps: true)
         NSApp.orderFrontStandardAboutPanel(options: [
             .credits: NSAttributedString(
-                string: "外部ディスプレイ接続時に内蔵ディスプレイを自動でOFFにするメニューバーアプリ。\n"
-                    + "個人利用目的。非公開APIを使用しているためMac App Storeには配布不可。",
+                string: "A menu bar app that turns off the built-in display when an external "
+                    + "display is connected.\nFor personal use; uses a private API, so it can't be "
+                    + "distributed through the Mac App Store.",
                 attributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)]
             ),
         ])
@@ -218,25 +225,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let status = controller.panelStatus
         switch status {
         case .apiUnavailable:
-            statusLabelItem.title = "このmacOSでは非公開APIが利用できません"
+            statusLabelItem.title = "Private API unavailable on this macOS version"
         case .notFound:
-            statusLabelItem.title = "内蔵ディスプレイが見つかりません"
+            statusLabelItem.title = "Built-in display not found"
         case .on:
-            statusLabelItem.title = "内蔵ディスプレイ: ON"
+            statusLabelItem.title = "Built-in display: ON"
         case .off:
-            statusLabelItem.title = "内蔵ディスプレイ: OFF"
+            statusLabelItem.title = "Built-in display: OFF"
         case .restoring:
             statusLabelItem.title = controller.needsLidCycle
-                ? "内蔵ディスプレイ: 復元待ち — 蓋を閉じて数秒後に開いてください"
-                : "内蔵ディスプレイ: 復元中…"
+                ? "Built-in display: waiting to restore — close the lid, then open it"
+                : "Built-in display: restoring…"
         }
         let isOff = status == .off || status == .restoring
-        toggleItem.title = isOff ? "内蔵ディスプレイをONに戻す" : "内蔵ディスプレイをOFFにする"
+        toggleItem.title = isOff ? "Turn built-in display back ON" : "Turn built-in display OFF"
         toggleItem.isEnabled = status != .apiUnavailable && status != .notFound
             && !controller.isChanging
             && (isOff || (controller.isDisableSupported && controller.hasUsableExternalDisplay))
         if !isOff, !controller.isDisableSupported {
-            toggleItem.title = "OFFは使用停止中（ONに戻せることが確認できていないため）"
+            toggleItem.title = "OFF is disabled (restore not verified on this Mac — see README)"
         }
         restoreItem.isEnabled = status != .apiUnavailable && status != .notFound
 

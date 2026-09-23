@@ -1,6 +1,6 @@
-// アプリアイコン生成スクリプト。ビルドのたびには実行しない。
-// 実行: swift scripts/make-icon.swift
-// 生成物 (Resources/AppIcon.icns) はリポジトリにコミットする。
+// App icon generator. Not run on every build.
+// Usage: swift scripts/make-icon.swift
+// The output (Resources/AppIcon.icns) is committed to the repo.
 import AppKit
 
 let sizes: [(px: Int, name: String)] = [
@@ -52,7 +52,7 @@ func render(size: Int) -> Data? {
         glyph.draw(at: origin, from: .zero, operation: .sourceOver, fraction: 0.92)
     }
 
-    // 「ブラックアウト」を示す斜線バー。
+    // A diagonal bar signifying "blackout".
     let barHeight = max(CGFloat(size) * 0.06, 2)
     let barRect = NSRect(x: CGFloat(size) * 0.16, y: CGFloat(size) * 0.30, width: CGFloat(size) * 0.68, height: barHeight)
     let transform = NSAffineTransform()
