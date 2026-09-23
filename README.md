@@ -1,11 +1,14 @@
 # AutoBlackout
 
+[![CI](https://github.com/yutsuki3/AutoBlackout/actions/workflows/ci.yml/badge.svg)](https://github.com/yutsuki3/AutoBlackout/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A macOS menu bar app that automatically turns off the built-in display when an external display is
 connected.
 
-For personal use. It resolves the private APIs (`SLSConfigureDisplayEnabled` /
-`CGSConfigureDisplayEnabled`) at runtime with `dlsym`, so it can't be distributed through the Mac
-App Store, and a macOS update could break it at any time.
+It resolves the private APIs (`SLSConfigureDisplayEnabled` / `CGSConfigureDisplayEnabled`) at
+runtime with `dlsym`, so it can't be distributed through the Mac App Store, and a macOS update could
+break it at any time.
 
 ## Features
 
@@ -16,7 +19,7 @@ App Store, and a macOS update could break it at any time.
   can't leave the built-in display stuck off.
 - Optional login item, via `SMAppService`.
 
-Not yet implemented:
+Known limitations / ideas (contributions welcome):
 
 - Re-applying state on sleep/wake beyond the existing safeguards.
 - Refining what counts as "an external display is present" (excluding mirrored displays more

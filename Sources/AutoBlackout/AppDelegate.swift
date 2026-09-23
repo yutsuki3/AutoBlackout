@@ -210,8 +210,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.orderFrontStandardAboutPanel(options: [
             .credits: NSAttributedString(
                 string: "A menu bar app that turns off the built-in display when an external "
-                    + "display is connected.\nFor personal use; uses a private API, so it can't be "
-                    + "distributed through the Mac App Store.",
+                    + "display is connected.\nUses a private API, so it can't be distributed through the Mac "
+                    + "App Store. MIT License.",
                 attributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)]
             ),
         ])
