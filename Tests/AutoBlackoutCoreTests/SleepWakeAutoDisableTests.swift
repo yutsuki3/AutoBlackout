@@ -62,12 +62,43 @@ final class SleepWakeAutoDisableTests: XCTestCase {
         XCTAssertNil(c.managedDisplay)
     }
 
-    func testExternalReappearingSlowlyAfterWakeStillDoesNotAutoDisable() {
+    func testExternalReappearingAFewSecondsAfterWakeStillDoesNotAutoDisable() {
         let c = makeController()
         system.externals = [FakeDisplaySystem.external]
         c.launch()
-        sleepAndWake(c, externalBackAfter: 30)
+        sleepAndWake(c, externalBackAfter: BlackoutController.sleepResumeWindow - 1)
         XCTAssertTrue(system.panelEnabled)
+    }
+
+    // Reported from real use: the external was unplugged during sleep and the user plugged it back in
+    // about 10 seconds after waking. That's a real connection, not the monitor resuming by itself
+    // (which real logs show takes about 1 second).
+    func testUserReplugTenSecondsAfterWakeIsANewConnection() {
+        let c = makeController()
+        system.externals = [FakeDisplaySystem.external]
+        c.launch()
+        c.handlePowerEvent("NSWorkspaceWillSleepNotification", transition: .sleep)
+        system.externals = [] // unplugged during sleep
+        c.evaluate(reason: "callback")
+        c.handlePowerEvent("NSWorkspaceDidWakeNotification", transition: .wake)
+        c.handlePowerEvent("NSWorkspaceScreensDidWakeNotification", transition: .wake)
+        c.evaluate(reason: "NSWorkspaceScreensDidWakeNotification")
+        XCTAssertTrue(system.panelEnabled)
+
+        clock = clock.addingTimeInterval(10)
+        system.externals = [FakeDisplaySystem.external] // the user plugs the monitor in
+        c.evaluate(reason: "callback")
+        scheduler.advance()
+
+        XCTAssertFalse(system.panelEnabled, "auto-OFF must fire for a plug-in 10s after waking")
+        XCTAssertEqual(c.managedDisplay, FakeDisplaySystem.panel)
+    }
+
+    func testResumeWindowIsShortComparedToAHumanReplug() {
+        // Real logs: the monitor is back ~1s after the wake notifications. Keep the allowance well
+        // below the time it takes to plug a cable in by hand.
+        XCTAssertGreaterThanOrEqual(BlackoutController.sleepResumeWindow, 3)
+        XCTAssertLessThanOrEqual(BlackoutController.sleepResumeWindow, 8)
     }
 
     func testDifferentExternalAfterWakeIsANewConnection() {

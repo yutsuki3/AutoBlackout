@@ -25,7 +25,7 @@ Known limitations / ideas (contributions welcome):
 - Sleep/wake: the built-in display staying OFF across a display sleep/wake is confirmed on real
   hardware, and waking deliberately doesn't re-disable it (a power cycle would wake the screen).
   A system sleep/wake used to re-trigger auto-OFF because the external display drops out of the
-  display list and comes back; that's fixed (the same display returning within 60s of waking isn't
+  display list and comes back; that's fixed (the same display returning within 5s of waking isn't
   a new connection). The log records `power:` lines around every sleep/wake — please attach them to
   an issue if the display behaves unexpectedly after waking.
 - Refining what counts as "an external display is present" (excluding mirrored displays more

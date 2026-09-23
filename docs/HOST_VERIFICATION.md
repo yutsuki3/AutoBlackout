@@ -60,7 +60,7 @@ Other measures baked in:
   a headless fallback) and the external comes back a moment after the wake notifications, which used
   to look like a new connection and auto-turned the built-in display off after every wake. The
   controller now records which external displays were connected when going to sleep and treats those
-  same displays returning within 60 seconds of waking as resuming, not connecting (confirmed from a
+  same displays returning within 5 seconds of waking as resuming, not connecting (confirmed from a
   real `power:` log).
   Likewise, a built-in panel that this app did *not* disable can be missing from the online list
   around a wake after the external was unplugged during sleep (the Mac may go straight back to
