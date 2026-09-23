@@ -5,6 +5,12 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- Auto-OFF didn't fire when the external display was unplugged during sleep and plugged back in a
+  few seconds after waking: the 60-second "same display returning after sleep" allowance (added in
+  1.2.2) treated it as the monitor resuming. A monitor resuming by itself comes back about a second
+  after the wake notifications, so the allowance is now 5 seconds.
+
 ## [1.2.3] - 2026-09-24
 
 ### Fixed

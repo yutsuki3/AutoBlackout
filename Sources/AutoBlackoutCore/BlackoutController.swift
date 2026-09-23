@@ -51,8 +51,11 @@ public final class BlackoutController {
     public static let maxPowerCycles = 2
     /// How long after waking an external display that was connected before sleeping counts as
     /// "resuming" rather than a new connection. USB-C monitors drop out of the online list during a
-    /// system sleep/wake and can take a while to come back.
-    public static let sleepResumeWindow: TimeInterval = 60
+    /// system sleep/wake and come back about a second after the wake notifications (every wake in
+    /// real logs). Keep this short: a user who unplugs the monitor during sleep and plugs it back in
+    /// a few seconds after waking (10s in a real report) is making a new connection, and auto-OFF
+    /// must fire for that.
+    public static let sleepResumeWindow: TimeInterval = 5
     /// How long after a wake a built-in panel this app never disabled may stay missing from the online
     /// list before it counts as disabled. The panel normally comes back within about a second of a
     /// wake; restoring earlier only power-cycles the displays for nothing.
