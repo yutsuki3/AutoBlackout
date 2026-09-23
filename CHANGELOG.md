@@ -5,6 +5,15 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- Unplugging the external display while the Mac was asleep, then waking it, showed the "restoring
+  the built-in display" overlay for ~13 seconds. The built-in panel is briefly missing from the
+  display list around such a wake (the Mac may even go straight back to sleep), and the app started
+  its restore procedure for a panel it had never disabled, power-cycling the displays and waking a Mac
+  that was trying to sleep. A panel this app didn't disable is now given time to settle while the Mac
+  is sleeping or within 8 seconds after a wake; if it's still missing after that, the restore runs as
+  before. A panel the app did disable, and the manual force-restore, are never delayed.
+
 ## [1.2.2] - 2026-09-24
 
 ### Fixed

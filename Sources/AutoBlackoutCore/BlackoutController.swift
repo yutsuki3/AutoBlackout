@@ -53,6 +53,13 @@ public final class BlackoutController {
     /// "resuming" rather than a new connection. USB-C monitors drop out of the online list during a
     /// system sleep/wake and can take a while to come back.
     public static let sleepResumeWindow: TimeInterval = 60
+    /// How long after a wake a built-in panel this app never disabled may stay missing from the online
+    /// list before it counts as disabled. The panel normally comes back within about a second of a
+    /// wake; restoring earlier only power-cycles the displays for nothing.
+    public static let wakeSettleWindow: TimeInterval = 8
+    /// The longest a sleep notification without a matching wake suppresses that same restore, so a
+    /// missed wake notification can't hold it off forever.
+    public static let sleepSuppressionLimit: TimeInterval = 300
     /// How long to wait after starting a power cycle before sending the next enable request.
     /// Sending it while displays are asleep blocks for up to 10s waiting on WindowServer to
     /// reconfigure and then fails with 1014, which also delays waking the screens (confirmed on
@@ -85,6 +92,12 @@ public final class BlackoutController {
     /// though it left the online list in between (real hardware: every real display drops out during
     /// a system sleep/wake, leaving only a headless fallback).
     private var externalsBeforeSleep: Set<CGDirectDisplayID>?
+    /// Between a sleep notification and the matching wake. The panel and external displays come and
+    /// go while the Mac is asleep or has only briefly woken, so a missing panel means nothing then.
+    private var isSleeping = false
+    private var sleepStartedAt: Date?
+    private var lastWakeAt: Date?
+    private var loggedPowerSettleWait = false
     /// When the wake-resume allowance ends. `nil` while still asleep (no wake seen yet).
     private var sleepResumeDeadline: Date?
     /// A newly connected external display is waiting for auto-OFF. If it was asleep when it
@@ -242,6 +255,22 @@ public final class BlackoutController {
             restorePending = true
         }
 
+        // A panel this app never disabled, missing while the Mac is (re)entering sleep or has just
+        // woken (e.g. the external was unplugged during sleep): the displays are still settling and
+        // the panel normally reappears by itself. Restoring now only power-cycles the displays, which
+        // wakes a Mac that is trying to go back to sleep. Wait; if it's still missing once things
+        // settle, the normal restore below takes over.
+        if !enabled, managedDisplay == nil, !restorePending, isPowerSettling {
+            if !loggedPowerSettleWait {
+                logger.log("panel \(panel) missing during sleep/wake but not disabled by this app (\(reason)); "
+                    + "waiting for displays to settle")
+                loggedPowerSettleWait = true
+            }
+            onStateChange?()
+            return
+        }
+        loggedPowerSettleWait = false
+
         if restorePending || (!enabled && externalLossConfirmed) {
             attemptRestore(panel, reason: reason)
             return
@@ -275,6 +304,8 @@ public final class BlackoutController {
         logPowerEvent(name)
         switch transition {
         case .sleep:
+            if !isSleeping { sleepStartedAt = now() }
+            isSleeping = true
             let present = DisplayLogic.presentExternals(in: system.snapshot())
             // A second sleep notification arrives after the externals are already gone; keep the
             // first record instead of overwriting it with nothing.
@@ -283,8 +314,18 @@ public final class BlackoutController {
                 sleepResumeDeadline = nil
             }
         case .wake:
+            isSleeping = false
+            lastWakeAt = now()
             if externalsBeforeSleep != nil { sleepResumeDeadline = now().addingTimeInterval(Self.sleepResumeWindow) }
         }
+    }
+
+    private var isPowerSettling: Bool {
+        if isSleeping, let started = sleepStartedAt, now().timeIntervalSince(started) < Self.sleepSuppressionLimit {
+            return true
+        }
+        if let wake = lastWakeAt, now().timeIntervalSince(wake) < Self.wakeSettleWindow { return true }
+        return false
     }
 
     /// Whether `present` is the same external display(s) coming back after a sleep. Consumes the
