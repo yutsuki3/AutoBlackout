@@ -12,6 +12,11 @@ public enum DisplayLogic {
         snapshot.all?.first { $0.isBuiltin && !$0.isHeadlessFallback }?.id
     }
 
+    /// 接続されている外部ディスプレイ（スリープ中も含む）。「新しく接続されたか」の判定に使う。
+    public static func presentExternals(in snapshot: DisplaySnapshot) -> Set<CGDirectDisplayID> {
+        Set(snapshot.online.filter { !$0.isBuiltin && !$0.isHeadlessFallback && $0.isOnline }.map(\.id))
+    }
+
     /// 実際に映像を出せる外部ディスプレイ。
     public static func usableExternals(in snapshot: DisplaySnapshot) -> Set<CGDirectDisplayID> {
         Set(snapshot.online.filter {
@@ -20,10 +25,10 @@ public enum DisplayLogic {
         }.map(\.id))
     }
 
-    /// 内蔵パネルが「確実に」有効か。オンライン一覧に居ないIDはフラグが信用できないので無効扱い。
+    /// 内蔵パネルが有効（無効化されていない）か。無効化したパネルはオンライン一覧から消えるので、一覧に居るかで判断する。
+    /// ディスプレイスリープ中のパネルも有効とみなす（スリープのたびに「OFFになった」と誤解して戻そうとしないため）。
     public static func isPanelEnabled(_ id: CGDirectDisplayID, in snapshot: DisplaySnapshot) -> Bool {
         guard let info = snapshot.online.first(where: { $0.id == id }) else { return false }
-        return !info.isHeadlessFallback && info.isOnline && !info.isAsleep
-            && (info.isActive || info.isInMirrorSet)
+        return !info.isHeadlessFallback && info.isOnline
     }
 }
