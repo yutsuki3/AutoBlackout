@@ -246,6 +246,16 @@ public final class BlackoutController {
         onStateChange?()
     }
 
+    /// Records a power event (sleep, wake, screen sleep/wake) together with the panel and display
+    /// state at that moment. Log-only: it never changes any state or sends any request. `evaluate`
+    /// only logs when the state changed, so without this a sleep/wake that leaves everything as it
+    /// was (the common case) would leave no trace at all.
+    public func logPowerEvent(_ name: String) {
+        let snapshot = system.snapshot()
+        logger.log("power: \(name) panel=\(describe(builtInPanelID(in: snapshot))) "
+            + "managed=\(describe(managedDisplay)) pending=\(restorePending) " + describe(snapshot))
+    }
+
     public func toggleManually() {
         if isBuiltInDisplayOff {
             requestRestore(trigger: "manual")

@@ -135,5 +135,8 @@ unplugged while OFF, rather than requesting a restore yourself:
 
 - If the screen stays black and doesn't come back, close the lid and reopen it after a few seconds
   (the app, or `--restore`, will pick up from there if either is running).
+- Sleep/wake: every sleep and wake notification is logged as a `power:` line with the panel state
+  (`grep 'power:' ~/Library/Logs/AutoBlackout/recovery.log`). If the built-in display comes back on
+  after waking, attach those lines to an issue.
 - Logs: `~/Library/Logs/AutoBlackout/recovery.log` (also written to the os_log subsystem
   `io.github.yutsuki3.AutoBlackout`).

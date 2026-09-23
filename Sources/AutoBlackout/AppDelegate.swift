@@ -119,7 +119,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let center = NSWorkspace.shared.notificationCenter
         for name in [NSWorkspace.didWakeNotification, NSWorkspace.screensDidWakeNotification] {
             center.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
+                self?.controller.logPowerEvent(note.name.rawValue)
                 self?.controller.evaluate(reason: note.name.rawValue)
+            }
+        }
+        // Sleep notifications are only logged (no state change), so a sleep/wake cycle can be
+        // reconstructed from the log: what the panel looked like going to sleep and coming back.
+        for name in [NSWorkspace.willSleepNotification, NSWorkspace.screensDidSleepNotification] {
+            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
+                self?.controller.logPowerEvent(note.name.rawValue)
             }
         }
 

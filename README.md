@@ -22,7 +22,11 @@ break it at any time.
 
 Known limitations / ideas (contributions welcome):
 
-- Re-applying state on sleep/wake beyond the existing safeguards.
+- Sleep/wake: the built-in display staying OFF across a display sleep/wake is confirmed on real
+  hardware, and waking deliberately doesn't re-disable it (a power cycle would wake the screen).
+  Whether a full system sleep or a lid cycle needs an explicit re-apply is undecided; the log now
+  records `power:` lines around every sleep/wake so real cases can be collected — please attach them
+  to an issue if the display comes back on after waking.
 - Refining what counts as "an external display is present" (excluding mirrored displays more
   precisely, etc.).
 - Falling back across more private symbol names for macOS version differences.
