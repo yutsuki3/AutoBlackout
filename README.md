@@ -1,11 +1,14 @@
 # AutoBlackout
 
+[![CI](https://github.com/yutsuki3/AutoBlackout/actions/workflows/ci.yml/badge.svg)](https://github.com/yutsuki3/AutoBlackout/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A macOS menu bar app that automatically turns off the built-in display when an external display is
 connected.
 
-For personal use. It resolves the private APIs (`SLSConfigureDisplayEnabled` /
-`CGSConfigureDisplayEnabled`) at runtime with `dlsym`, so it can't be distributed through the Mac
-App Store, and a macOS update could break it at any time.
+It resolves the private APIs (`SLSConfigureDisplayEnabled` / `CGSConfigureDisplayEnabled`) at
+runtime with `dlsym`, so it can't be distributed through the Mac App Store, and a macOS update could
+break it at any time.
 
 ## Features
 
@@ -16,7 +19,7 @@ App Store, and a macOS update could break it at any time.
   can't leave the built-in display stuck off.
 - Optional login item, via `SMAppService`.
 
-Not yet implemented:
+Known limitations / ideas (contributions welcome):
 
 - Re-applying state on sleep/wake beyond the existing safeguards.
 - Refining what counts as "an external display is present" (excluding mirrored displays more
@@ -50,6 +53,14 @@ Apple Developer certificate).
 
 To regenerate the app icon, run `swift scripts/make-icon.swift`, which rewrites
 `Resources/AppIcon.icns`.
+
+### Prebuilt release
+
+Once a release is published, download `AutoBlackout-vX.Y.Z.zip` from the
+[Releases page](https://github.com/yutsuki3/AutoBlackout/releases), check it against the attached
+`.sha256`, unzip, and move it to `/Applications`. It's ad-hoc signed, so use right-click > "Open" on
+first launch. Maintainers: pushing a `vX.Y.Z` tag builds and publishes it via
+`.github/workflows/release.yml`.
 
 ### Development build
 
@@ -87,6 +98,17 @@ If the built-in display gets stuck off (e.g. reachable only over SSH):
 If it reports that it couldn't restore, keep the command running, close the lid, wait about 5
 seconds, then open it. See [docs/HOST_VERIFICATION.md](docs/HOST_VERIFICATION.md) for more detail on
 what to do if the display doesn't come back.
+
+## Reporting a bug
+
+Run this and paste the output into the issue (it's read-only and never changes a display):
+
+```bash
+/Applications/AutoBlackout.app/Contents/MacOS/AutoBlackout --diagnose
+```
+
+It reports the app version, Mac model, macOS build, verification status, the display list, and the
+last lines of the log. `AutoBlackout --version` prints just the version.
 
 ## Testing
 

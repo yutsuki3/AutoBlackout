@@ -175,6 +175,15 @@ enum HostVerification {
         return defaults.string(forKey: verifiedHostDefaultsKey) == current.description
     }
 
+    /// Where the current host's verification comes from, for `--diagnose`.
+    static var sourceDescription: String {
+        if shippedAllowlist.contains(current) { return "verified (shipped allowlist)" }
+        if defaults.string(forKey: verifiedHostDefaultsKey) == current.description {
+            return "verified (locally, via --verify-restore)"
+        }
+        return "NOT verified (OFF feature disabled)"
+    }
+
     /// Called after `AutoBlackout --verify-restore --confirm-reboot-risk` completes successfully:
     /// remembers that this exact machine + macOS build has been confirmed to restore correctly, so
     /// the disable feature can be used on it going forward.

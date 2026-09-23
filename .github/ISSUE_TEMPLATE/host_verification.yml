@@ -1,0 +1,38 @@
+name: Host verification report
+description: Report the result of `--verify-restore` on your Mac (helps grow the verified-host allowlist)
+labels: [verification]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Run `AutoBlackout --verify-restore --confirm-reboot-risk` (see docs/HOST_VERIFICATION.md) and
+        report the result here, whether it succeeded or not. Successful reports can be added to the
+        shipped allowlist.
+  - type: dropdown
+    id: result
+    attributes:
+      label: Result
+      options:
+        - Restored successfully
+        - Restored only after closing/reopening the lid
+        - Did not restore (needed a reboot)
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Mode
+      options:
+        - "--verify-restore"
+        - "--verify-restore --after-unplug"
+        - Both
+    validations:
+      required: true
+  - type: textarea
+    id: diagnose
+    attributes:
+      label: Diagnostics
+      description: Output of `AutoBlackout --diagnose` (it includes the host key and the verify log lines).
+      render: markdown
+    validations:
+      required: true
