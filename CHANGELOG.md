@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.2.4] - 2026-09-24
+
 ### Fixed
 - Auto-OFF didn't fire when the external display was unplugged during sleep and plugged back in a
   few seconds after waking: the 60-second "same display returning after sleep" allowance (added in
