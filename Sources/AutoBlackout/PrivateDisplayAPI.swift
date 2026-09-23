@@ -56,7 +56,7 @@ enum PrivateDisplayAPI {
     /// `HostVerification.markCurrentHostVerified()`). On any other Mac/macOS combination, the
     /// disable feature stays off — `LiveDisplaySystem.isDisableSupported` grays out the menu — until
     /// the user opts in by running that verification themselves.
-    static var isDisableAllowed: Bool { HostVerification.isCurrentHostVerified }
+    static var isDisableAllowed: Bool { HostInfo.isAppleSilicon && HostVerification.isCurrentHostVerified }
 
     /// Details of the most recent failure (which stage, what error). `nil` on success.
     private(set) static var lastError: String?
@@ -166,7 +166,7 @@ enum HostVerification {
         HostVerifier(
             current: current,
             shippedAllowlist: shippedAllowlist,
-            defaults: UserDefaults(suiteName: "io.github.yutsuki3.AutoBlackout") ?? .standard
+            defaults: AppDefaults.shared
         )
     }
 
@@ -181,6 +181,7 @@ enum HostVerification {
 
     /// Where the current host's verification comes from, for `--diagnose`.
     static var sourceDescription: String {
+        guard HostInfo.isAppleSilicon else { return "NOT supported (Intel Mac; OFF feature disabled)" }
         switch verifier.source {
         case .shippedAllowlist: return "verified (shipped allowlist)"
         case .localVerification: return "verified (locally, via --verify-restore)"

@@ -18,6 +18,7 @@ break it at any time.
 - Self-heals on launch and on a background poll, so a missed callback or a crashed previous process
   can't leave the built-in display stuck off.
 - Optional login item, via `SMAppService`.
+- English and Japanese (日本語) menu, following the system language.
 
 Known limitations / ideas (contributions welcome):
 
@@ -30,7 +31,8 @@ Known limitations / ideas (contributions welcome):
 
 - macOS 13 (Ventura) or later.
 - Apple Silicon only. The private API used to fully disconnect the built-in display doesn't behave
-  the same way on Intel Macs.
+  the same way on Intel Macs, so the OFF feature is disabled there (and `--verify-restore` refuses to
+  run).
 - The auto/manual **OFF** feature only works on a Mac model + macOS build combination that's been
   verified to restore the display correctly afterward. The app ships with one verified combination;
   on any other machine, OFF stays disabled until you verify it yourself with one command. See
@@ -146,7 +148,8 @@ it would really disable the panel; it's covered by `--verify-restore` on hardwar
 
 ## Contributing
 
-Issues and PRs are welcome. If a change touches `PrivateDisplayAPI.swift` or
+Issues and PRs are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) and the
+[Code of Conduct](CODE_OF_CONDUCT.md). If a change touches `PrivateDisplayAPI.swift` or
 `BlackoutController.swift`'s restore logic, please run `swift test` and, if you can do so safely
 (see [docs/HOST_VERIFICATION.md](docs/HOST_VERIFICATION.md)), verify the change on real hardware
 before opening a PR — a bug here can strand someone's display until they reboot.

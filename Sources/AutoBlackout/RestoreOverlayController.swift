@@ -14,8 +14,10 @@ final class RestoreOverlayController {
         override var canBecomeMain: Bool { false }
     }
 
-    private static let restoringText = "Restoring the built-in display…"
-    private static let lidCycleText = "The built-in display isn't coming back.\nClose the lid, wait a few seconds, then open it."
+    private static var restoringText: String { L("Restoring the built-in display…") }
+    private static var lidCycleText: String {
+        L("The built-in display isn't coming back.\nClose the lid, wait a few seconds, then open it.")
+    }
 
     private var windows: [OverlayWindow] = []
     private var labels: [NSTextField] = []

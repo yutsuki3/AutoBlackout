@@ -52,6 +52,7 @@ enum RestoreVerification {
 
         let snapshot = system.snapshot()
         var problems: [String] = []
+        if !HostInfo.isAppleSilicon { problems.append("Intel Macs are not supported") }
         if !controller.isAPIAvailable { problems.append("private API unavailable") }
         if DisplayLogic.onlineBuiltIn(in: snapshot) == nil { problems.append("built-in panel is not online") }
         if DisplayLogic.usableExternals(in: snapshot).isEmpty { problems.append("no usable external display") }

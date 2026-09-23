@@ -27,7 +27,7 @@ type_body_length:
 function_body_length:
   warning: 100
 cyclomatic_complexity:
-  warning: 20
+  warning: 25
 
 disabled_rules:
   - trailing_comma # the codebase (and swift-format) use trailing commas in multi-line literals

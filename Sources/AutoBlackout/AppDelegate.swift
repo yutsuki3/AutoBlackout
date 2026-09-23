@@ -42,13 +42,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.autoenablesItems = false
         menu.delegate = self
 
-        statusLabelItem = NSMenuItem(title: "Built-in display: ON", action: nil, keyEquivalent: "")
+        statusLabelItem = NSMenuItem(title: L("Built-in display: ON"), action: nil, keyEquivalent: "")
         statusLabelItem.isEnabled = false
         menu.addItem(statusLabelItem)
 
         // Only shown when a macOS update invalidated an earlier verification of this Mac model.
         reverifyItem = NSMenuItem(
-            title: "macOS was updated — re-verify to enable OFF…",
+            title: L("macOS was updated — re-verify to enable OFF…"),
             action: #selector(openVerificationDocs),
             keyEquivalent: ""
         )
@@ -58,7 +58,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
 
         toggleItem = NSMenuItem(
-            title: "Turn built-in display OFF",
+            title: L("Turn built-in display OFF"),
             action: #selector(toggle),
             keyEquivalent: ""
         )
@@ -67,7 +67,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         // Always clickable regardless of the current status: sends an enable request no matter what.
         restoreItem = NSMenuItem(
-            title: "Force-restore built-in display",
+            title: L("Force-restore built-in display"),
             action: #selector(forceRestore),
             keyEquivalent: ""
         )
@@ -75,7 +75,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(restoreItem)
 
         autoModeItem = NSMenuItem(
-            title: "Auto-OFF on external monitor connect",
+            title: L("Auto-OFF on external monitor connect"),
             action: #selector(toggleAutoMode),
             keyEquivalent: ""
         )
@@ -92,7 +92,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         loginItemItem = NSMenuItem(
-            title: "Launch at login",
+            title: L("Launch at login"),
             action: #selector(toggleLoginItem),
             keyEquivalent: ""
         )
@@ -101,9 +101,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateLoginItemState()
 
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "About AutoBlackout", action: #selector(showAbout), keyEquivalent: "").withTarget(self))
-        menu.addItem(NSMenuItem(title: "Show Logs", action: #selector(openLogs), keyEquivalent: "").withTarget(self))
-        menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        menu.addItem(NSMenuItem(title: L("About AutoBlackout"), action: #selector(showAbout), keyEquivalent: "").withTarget(self))
+        menu.addItem(NSMenuItem(title: L("Show Logs"), action: #selector(openLogs), keyEquivalent: "").withTarget(self))
+        menu.addItem(NSMenuItem(title: L("Quit"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
 
         statusItem.menu = menu
 
@@ -176,9 +176,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func showQuitCancelledAlert() {
         let alert = NSAlert()
-        alert.messageText = "Couldn't restore the built-in display, so quitting was cancelled"
-        alert.informativeText = "Still retrying in the background. Closing the lid and reopening it "
-            + "after a few seconds sometimes brings it back."
+        alert.messageText = L("Couldn't restore the built-in display, so quitting was cancelled")
+        // swiftlint:disable:next line_length
+        alert.informativeText = L("Still retrying in the background. Closing the lid and reopening it after a few seconds sometimes brings it back.")
         NSApp.activate(ignoringOtherApps: true)
         alert.runModal()
     }
@@ -231,9 +231,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.activate(ignoringOtherApps: true)
         NSApp.orderFrontStandardAboutPanel(options: [
             .credits: NSAttributedString(
-                string: "A menu bar app that turns off the built-in display when an external "
-                    + "display is connected.\nUses a private API, so it can't be distributed through the Mac "
-                    + "App Store. MIT License.",
+                // swiftlint:disable:next line_length
+                string: L("A menu bar app that turns off the built-in display when an external display is connected.\nUses a private API, so it can't be distributed through the Mac App Store. MIT License."),
                 attributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)]
             ),
         ])
@@ -247,29 +246,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let status = controller.panelStatus
         switch status {
         case .apiUnavailable:
-            statusLabelItem.title = "Private API unavailable on this macOS version"
+            statusLabelItem.title = L("Private API unavailable on this macOS version")
         case .notFound:
-            statusLabelItem.title = "Built-in display not found"
+            statusLabelItem.title = L("Built-in display not found")
         case .on:
-            statusLabelItem.title = "Built-in display: ON"
+            statusLabelItem.title = L("Built-in display: ON")
         case .off:
-            statusLabelItem.title = "Built-in display: OFF"
+            statusLabelItem.title = L("Built-in display: OFF")
         case .restoring:
             statusLabelItem.title = controller.needsLidCycle
-                ? "Built-in display: waiting to restore — close the lid, then open it"
-                : "Built-in display: restoring…"
+                ? L("Built-in display: waiting to restore — close the lid, then open it")
+                : L("Built-in display: restoring…")
         }
         let isOff = status == .off || status == .restoring
-        toggleItem.title = isOff ? "Turn built-in display back ON" : "Turn built-in display OFF"
+        toggleItem.title = isOff ? L("Turn built-in display back ON") : L("Turn built-in display OFF")
         toggleItem.isEnabled = status != .apiUnavailable && status != .notFound
             && !controller.isChanging
             && (isOff || (controller.isDisableSupported && controller.hasUsableExternalDisplay))
         let reverificationNotice = HostVerification.reverificationNotice
         reverifyItem.isHidden = controller.isDisableSupported || reverificationNotice == nil
         if !isOff, !controller.isDisableSupported {
-            toggleItem.title = reverificationNotice != nil
-                ? "OFF is disabled (macOS was updated — restore needs re-verifying)"
-                : "OFF is disabled (restore not verified on this Mac — see README)"
+            toggleItem.title = !HostInfo.isAppleSilicon
+                ? L("OFF is disabled (Intel Macs are not supported)")
+                : reverificationNotice != nil
+                ? L("OFF is disabled (macOS was updated — restore needs re-verifying)")
+                : L("OFF is disabled (restore not verified on this Mac — see README)")
         }
         restoreItem.isEnabled = status != .apiUnavailable && status != .notFound
 

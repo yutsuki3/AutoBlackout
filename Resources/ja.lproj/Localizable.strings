@@ -1,0 +1,25 @@
+/* AutoBlackout — Japanese. Keys are the English source strings (see Sources/AutoBlackout/Localization.swift). */
+
+"Built-in display: ON" = "内蔵ディスプレイ: オン";
+"Built-in display: OFF" = "内蔵ディスプレイ: オフ";
+"Built-in display not found" = "内蔵ディスプレイが見つかりません";
+"Built-in display: waiting to restore — close the lid, then open it" = "内蔵ディスプレイ: 復帰待ち — 蓋を閉じてから開いてください";
+"Built-in display: restoring…" = "内蔵ディスプレイ: 復帰中…";
+"Private API unavailable on this macOS version" = "この macOS ではプライベート API を利用できません";
+"Turn built-in display OFF" = "内蔵ディスプレイをオフにする";
+"Turn built-in display back ON" = "内蔵ディスプレイをオンに戻す";
+"Force-restore built-in display" = "内蔵ディスプレイを強制的に復帰する";
+"Auto-OFF on external monitor connect" = "外部モニタ接続時に自動でオフにする";
+"Launch at login" = "ログイン時に起動";
+"About AutoBlackout" = "AutoBlackout について";
+"Show Logs" = "ログを表示";
+"Quit" = "終了";
+"macOS was updated — re-verify to enable OFF…" = "macOS が更新されました — オフ機能を使うには再検証してください…";
+"OFF is disabled (macOS was updated — restore needs re-verifying)" = "オフは無効です(macOS が更新されたため、復帰の再検証が必要です)";
+"OFF is disabled (restore not verified on this Mac — see README)" = "オフは無効です(この Mac では復帰が未検証です — README を参照)";
+"OFF is disabled (Intel Macs are not supported)" = "オフは無効です(Intel Mac には対応していません)";
+"Couldn't restore the built-in display, so quitting was cancelled" = "内蔵ディスプレイを復帰できなかったため、終了を取り消しました";
+"Still retrying in the background. Closing the lid and reopening it after a few seconds sometimes brings it back." = "バックグラウンドで再試行を続けています。蓋を閉じて数秒後に開くと復帰することがあります。";
+"A menu bar app that turns off the built-in display when an external display is connected.\nUses a private API, so it can't be distributed through the Mac App Store. MIT License." = "外部ディスプレイの接続時に内蔵ディスプレイを自動でオフにするメニューバーアプリです。\nプライベート API を使用するため、Mac App Store では配布できません。MIT ライセンス。";
+"Restoring the built-in display…" = "内蔵ディスプレイを復帰しています…";
+"The built-in display isn't coming back.\nClose the lid, wait a few seconds, then open it." = "内蔵ディスプレイが復帰しません。\n蓋を閉じて数秒待ってから、開いてください。";

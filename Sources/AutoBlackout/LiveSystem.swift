@@ -114,8 +114,18 @@ enum HostInfo {
         return String(cString: buffer)
     }
 
+    /// Whether this Mac has an Apple Silicon CPU. The disable feature is only meant for Apple
+    /// Silicon: the private API doesn't behave the same way on Intel Macs. Also true when running
+    /// under Rosetta, since the hardware is still Apple Silicon.
+    static var isAppleSilicon: Bool {
+        var value: Int32 = 0
+        var size = MemoryLayout<Int32>.size
+        return sysctlbyname("hw.optional.arm64", &value, &size, nil, 0) == 0 && value == 1
+    }
+
     static var summary: String {
-        "model=\(model) os=\(ProcessInfo.processInfo.operatingSystemVersionString) build=\(osBuild)"
+        "model=\(model) os=\(ProcessInfo.processInfo.operatingSystemVersionString) build=\(osBuild) "
+            + "arch=\(isAppleSilicon ? "arm64" : "x86_64")"
     }
 
     /// Whether the lid is closed. `nil` if it can't be determined.
@@ -128,13 +138,25 @@ enum HostInfo {
     }
 }
 
+/// The app's shared defaults domain. The `.app` bundle's own identifier is that same domain, and
+/// Foundation warns when you pass your own bundle ID as a suite name, so use `.standard` there. The
+/// bare binary (`--restore` from a terminal, `swift run`) has no bundle ID and needs the named suite
+/// to read and write the same domain as the app.
+enum AppDefaults {
+    static let suiteName = "io.github.yutsuki3.AutoBlackout"
+
+    static var shared: UserDefaults {
+        Bundle.main.bundleIdentifier == suiteName ? .standard : (UserDefaults(suiteName: suiteName) ?? .standard)
+    }
+}
+
 /// Where state is stored across process boundaries, so a separate `--restore` process can read the
-/// same values. Uses a fixed suite name for that reason.
+/// same values. Uses the app's shared defaults domain (`AppDefaults.shared`) for that reason.
 final class UserDefaultsStateStore: DisplayStateStore {
     private let defaults: UserDefaults
 
     /// - Parameter defaults: injectable for tests; production uses the shared suite.
-    init(defaults: UserDefaults = UserDefaults(suiteName: "io.github.yutsuki3.AutoBlackout") ?? .standard) {
+    init(defaults: UserDefaults = AppDefaults.shared) {
         self.defaults = defaults
     }
 
