@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.2.3] - 2026-09-24
+
 ### Fixed
 - Unplugging the external display while the Mac was asleep, then waking it, showed the "restoring
   the built-in display" overlay for ~13 seconds. The built-in panel is briefly missing from the
