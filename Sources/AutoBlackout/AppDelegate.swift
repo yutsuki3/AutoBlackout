@@ -25,6 +25,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var autoModeItem: NSMenuItem!
     private var loginItemItem: NSMenuItem!
     private var statusLabelItem: NSMenuItem!
+    private var reverifyItem: NSMenuItem!
+
+    private static let verificationDocsURL = URL(
+        string: "https://github.com/yutsuki3/AutoBlackout/blob/main/docs/HOST_VERIFICATION.md#verifying-the-restore-procedure-on-your-mac"
+    )!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -40,6 +45,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusLabelItem = NSMenuItem(title: "Built-in display: ON", action: nil, keyEquivalent: "")
         statusLabelItem.isEnabled = false
         menu.addItem(statusLabelItem)
+
+        // Only shown when a macOS update invalidated an earlier verification of this Mac model.
+        reverifyItem = NSMenuItem(
+            title: "macOS was updated — re-verify to enable OFF…",
+            action: #selector(openVerificationDocs),
+            keyEquivalent: ""
+        )
+        reverifyItem.target = self
+        reverifyItem.isHidden = true
+        menu.addItem(reverifyItem)
         menu.addItem(.separator())
 
         toggleItem = NSMenuItem(
@@ -68,6 +83,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         autoModeItem.state = .on
         menu.addItem(autoModeItem)
         if !controller.isDisableSupported {
+            if let notice = HostVerification.reverificationNotice {
+                logger.log("re-verification needed: \(notice); run --verify-restore --confirm-reboot-risk")
+            }
             controller.isAutoModeEnabled = false
             autoModeItem.state = .off
             autoModeItem.isEnabled = false
@@ -188,6 +206,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         autoModeItem.state = controller.isAutoModeEnabled ? .on : .off
     }
 
+    @objc private func openVerificationDocs() {
+        NSWorkspace.shared.open(Self.verificationDocsURL)
+    }
+
     @objc private func openLogs() {
         NSWorkspace.shared.open(FileEventLogger.directory)
     }
@@ -242,8 +264,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         toggleItem.isEnabled = status != .apiUnavailable && status != .notFound
             && !controller.isChanging
             && (isOff || (controller.isDisableSupported && controller.hasUsableExternalDisplay))
+        let reverificationNotice = HostVerification.reverificationNotice
+        reverifyItem.isHidden = controller.isDisableSupported || reverificationNotice == nil
         if !isOff, !controller.isDisableSupported {
-            toggleItem.title = "OFF is disabled (restore not verified on this Mac — see README)"
+            toggleItem.title = reverificationNotice != nil
+                ? "OFF is disabled (macOS was updated — restore needs re-verifying)"
+                : "OFF is disabled (restore not verified on this Mac — see README)"
         }
         restoreItem.isEnabled = status != .apiUnavailable && status != .notFound
 

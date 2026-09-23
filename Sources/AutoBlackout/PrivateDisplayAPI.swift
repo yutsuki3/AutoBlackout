@@ -172,6 +172,13 @@ enum HostVerification {
 
     static var isCurrentHostVerified: Bool { verifier.isVerified }
 
+    /// Set when this Mac model was verified on an earlier macOS build but not the current one, i.e.
+    /// a macOS update invalidated the verification. `nil` otherwise (verified, or never verified).
+    static var reverificationNotice: String? {
+        guard let previous = verifier.staleVerification else { return nil }
+        return "macOS changed since this Mac was verified (\(previous.osBuild) -> \(current.osBuild))"
+    }
+
     /// Where the current host's verification comes from, for `--diagnose`.
     static var sourceDescription: String {
         switch verifier.source {

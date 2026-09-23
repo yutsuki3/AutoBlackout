@@ -31,6 +31,9 @@ enum Diagnostics {
         out.append("- macOS: \(ProcessInfo.processInfo.operatingSystemVersionString)")
         out.append("- host key: `\(HostVerification.current)`")
         out.append("- restore verification: \(HostVerification.sourceDescription)")
+        if let notice = HostVerification.reverificationNotice {
+            out.append("- re-verification needed: \(notice)")
+        }
         out.append("- private API available: \(PrivateDisplayAPI.isAvailable)")
         out.append("- lid closed: \(HostInfo.isLidClosed.map(String.init) ?? "unknown")")
         out.append("- lastKnownBuiltInID: \(store.lastKnownBuiltInID.map(String.init) ?? "nil")")
