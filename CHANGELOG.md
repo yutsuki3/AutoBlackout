@@ -6,12 +6,19 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- Japanese localization of the menu, alerts and restore overlay (`Resources/ja.lproj`, bundled into
+  the `.app`); a test keeps the source strings and the translations in sync.
+- Intel Macs are detected: the OFF feature stays disabled there and `--verify-restore` refuses to
+  run. `--diagnose` and the launch log report the architecture.
+- `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, and Dependabot updates for GitHub Actions.
 - `AutoBlackoutTests`: unit tests for the executable target (log file writing and rotation, the
   cross-process state store, `--diagnose` formatting, host info, the main-queue scheduler). They
   use a temporary directory and a throwaway `UserDefaults` suite, and never touch a real display or
   the real log/state.
 
 ### Changed
+- The `.app` no longer logs a Foundation warning about using its own bundle ID as a
+  `UserDefaults` suite name (same saved state as before).
 - `FileEventLogger` and `UserDefaultsStateStore` accept an injectable directory / `UserDefaults`
   (defaults unchanged).
 

@@ -10,6 +10,15 @@ final class HostInfoTests: XCTestCase {
         XCTAssertNotEqual(HostInfo.osBuild, "unknown")
     }
 
+    func testAppleSiliconDetectionAgreesWithTheMachineArchitecture() {
+        var info = utsname()
+        uname(&info)
+        let machine = withUnsafeBytes(of: &info.machine) { String(cString: $0.bindMemory(to: CChar.self).baseAddress!) }
+        // Under Rosetta `uname -m` reports x86_64 on Apple Silicon, so only the native case is exact.
+        if machine == "arm64" { XCTAssertTrue(HostInfo.isAppleSilicon) }
+        XCTAssertTrue(HostInfo.summary.contains("arch="))
+    }
+
     func testSummaryContainsModelAndBuild() {
         XCTAssertTrue(HostInfo.summary.contains("model=\(HostInfo.model)"))
         XCTAssertTrue(HostInfo.summary.contains("build=\(HostInfo.osBuild)"))
