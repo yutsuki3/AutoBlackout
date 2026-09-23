@@ -48,7 +48,10 @@ func render(size: Int) -> Data? {
     gradient?.draw(in: background, angle: -90)
 
     if let glyph = whiteSilhouette(of: "laptopcomputer", pointSize: CGFloat(size) * 0.5) {
-        let origin = NSPoint(x: (CGFloat(size) - glyph.size.width) / 2, y: (CGFloat(size) - glyph.size.height) / 2 + CGFloat(size) * 0.02)
+        let origin = NSPoint(
+            x: (CGFloat(size) - glyph.size.width) / 2,
+            y: (CGFloat(size) - glyph.size.height) / 2 + CGFloat(size) * 0.02
+        )
         glyph.draw(at: origin, from: .zero, operation: .sourceOver, fraction: 0.92)
     }
 
@@ -72,7 +75,7 @@ func render(size: Int) -> Data? {
 
 for entry in sizes {
     guard let png = render(size: entry.px) else {
-        FileHandle.standardError.write("failed to render \(entry.name)\n".data(using: .utf8)!)
+        FileHandle.standardError.write(Data("failed to render \(entry.name)\n".utf8))
         exit(1)
     }
     let fileURL = iconsetURL.appendingPathComponent("\(entry.name).png")
@@ -85,7 +88,7 @@ task.arguments = ["-c", "icns", iconsetURL.path, "-o", icnsURL.path]
 try task.run()
 task.waitUntilExit()
 guard task.terminationStatus == 0 else {
-    FileHandle.standardError.write("iconutil failed\n".data(using: .utf8)!)
+    FileHandle.standardError.write(Data("iconutil failed\n".utf8))
     exit(1)
 }
 try? FileManager.default.removeItem(at: iconsetURL)

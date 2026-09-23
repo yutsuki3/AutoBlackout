@@ -114,6 +114,7 @@ last lines of the log. `AutoBlackout --version` prints just the version.
 
 ```bash
 swift test
+brew install swiftlint && swiftlint lint --strict   # CI runs this too
 ```
 
 Tests never touch a real display.

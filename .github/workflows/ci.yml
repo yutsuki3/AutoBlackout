@@ -12,6 +12,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Swift version
         run: swift --version
+      - name: Lint
+        run: |
+          brew install swiftlint
+          swiftlint lint --strict
       - name: Build
         run: swift build -c release
       - name: Test
