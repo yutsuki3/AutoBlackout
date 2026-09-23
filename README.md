@@ -159,12 +159,16 @@ Issues and PRs are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) and the
 (see [docs/HOST_VERIFICATION.md](docs/HOST_VERIFICATION.md)), verify the change on real hardware
 before opening a PR — a bug here can strand someone's display until they reboot.
 
-## Credits
+## Credits and independence
 
-Referenced while building this: [alin23/Lunar](https://github.com/alin23/Lunar) (the design of its
-BlackOut feature) and [0xruth1ezz/screen-toggle](https://github.com/0xruth1ezz/screen-toggle) (how to
-call the private API and build in safety checks).
+AutoBlackout is an independent implementation. Its functionality was informed by the behavior of two
+other projects: [Lunar](https://github.com/alin23/Lunar) (its "BlackOut" feature, part of Lunar's paid
+Pro features) and [screen-toggle](https://github.com/0xruth1ezz/screen-toggle). No code was
+intentionally copied from either, and Lunar's BlackOut code isn't readable in its public repository
+anyway. AutoBlackout isn't affiliated with or endorsed by them; if you want a full-featured display
+manager (brightness, DDC, and more), Lunar is the mature choice. See
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for details and their MIT license notices.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE). Third-party notices: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
