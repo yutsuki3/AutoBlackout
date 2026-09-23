@@ -75,13 +75,18 @@ final class FileEventLoggerTests: ScratchTestCase {
         XCTAssertEqual(try Data(contentsOf: previous).count, FileEventLogger.maxLogBytes)
     }
 
-    func testUnwritableDirectoryDoesNotCrash() {
+    func testUnwritableDirectoryDoesNotCrashAndWritesNothing() throws {
         // A regular file where the directory should be: createDirectory fails, logging is a no-op.
         let blocker = FileManager.default.temporaryDirectory
             .appendingPathComponent("AutoBlackoutTests-blocker-\(UUID().uuidString)")
-        FileManager.default.createFile(atPath: blocker.path, contents: Data())
+        XCTAssertTrue(FileManager.default.createFile(atPath: blocker.path, contents: Data()))
         defer { try? FileManager.default.removeItem(at: blocker) }
 
         FileEventLogger(directory: blocker).log("goes nowhere")
+
+        var isDirectory: ObjCBool = true
+        XCTAssertTrue(FileManager.default.fileExists(atPath: blocker.path, isDirectory: &isDirectory))
+        XCTAssertFalse(isDirectory.boolValue, "the blocking file must be left untouched")
+        XCTAssertEqual(try Data(contentsOf: blocker).count, 0, "nothing may be written into it")
     }
 }
