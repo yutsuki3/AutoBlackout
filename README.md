@@ -10,29 +10,10 @@ It resolves the private APIs (`SLSConfigureDisplayEnabled` / `CGSConfigureDispla
 runtime with `dlsym`, so it can't be distributed through the Mac App Store, and a macOS update could
 break it at any time.
 
-## Status — please read first
-
-This is a small, **experimental** utility. Here is what that means, plainly:
-
-- **It has been verified on exactly one Mac**: a MacBook Air M3 (`Mac15,12`) on macOS 26.7
-  (`25G229`). On any other Mac or macOS build, the "turn OFF" feature is disabled until you verify it
-  yourself with `--verify-restore` (see [docs/HOST_VERIFICATION.md](docs/HOST_VERIFICATION.md)).
-  Passing that check on your Mac is evidence for that Mac and that macOS build only.
-- **It can leave the built-in display black.** It uses undocumented macOS APIs. On some Macs,
-  after the panel is turned off, macOS refuses to turn it back on until the displays are power-cycled
-  or, in the worst case, the Mac is rebooted. The app has a recovery procedure and `--restore`, but they
-  were only exercised on the machine above. Don't rely on it right before a presentation.
-- **It will probably break with some macOS updates**, and each update needs re-verifying.
-- **It is not signed with a Developer ID or notarized.** macOS will warn you the first time you open it.
-- **It was built with an AI coding assistant** (Claude Code) and has unit tests plus the author's own
-  daily use, but no independent review or security audit. Sleep/wake and unplug edge cases were still
-  being found and fixed during real use; expect more.
-- **It has no affiliation** with Apple, Lunar, or any project it was informed by (see
-  [Credits](#credits-and-independence)).
-- It is provided as is, under the [MIT License](LICENSE), without warranty.
-
-If that fits what you need, welcome. Reports of what works and what doesn't on your Mac are the most
-useful contribution (see [Reporting a bug](#reporting-a-bug)).
+> **Experimental.** Verified on one Mac so far (MacBook Air M3, macOS 26.7). It turns the built-in
+> display off with undocumented macOS APIs, so on some Macs the panel can stay dark until the displays
+> are power-cycled. The app tries to bring it back on its own, and `--restore` is there if it doesn't.
+> Details: [Before you use it](#before-you-use-it).
 
 ## Features
 
@@ -67,6 +48,28 @@ Known limitations / ideas (contributions welcome):
   on any other machine, OFF stays disabled until you verify it yourself with one command. See
   [docs/HOST_VERIFICATION.md](docs/HOST_VERIFICATION.md) for why this exists and how to verify your
   Mac. Nothing risky happens on an unverified machine — the feature is simply unavailable.
+
+## Before you use it
+
+- **Where it has been tested.** On exactly one Mac: a MacBook Air M3 (`Mac15,12`) with macOS 26.7
+  (`25G229`). On any other Mac or macOS build the "turn OFF" feature stays disabled until you verify it
+  yourself with `--verify-restore` (see [docs/HOST_VERIFICATION.md](docs/HOST_VERIFICATION.md)). A pass
+  is evidence for that Mac and that build only.
+- **What can go wrong.** On some Macs, after the built-in display is turned off, macOS won't turn it
+  back on until the displays are power-cycled or the lid is closed and reopened; before the recovery
+  procedure existed, that took a reboot. The app now retries, power-cycles the displays, and asks you
+  to cycle the lid. In testing on the Mac above that has worked every time, but it hasn't been tried
+  elsewhere. Keep the `--restore` command from [Emergency recovery](#emergency-recovery) handy.
+- **Compatibility.** A macOS update can break it, and every update needs re-verifying.
+- **Signing.** It isn't signed with a Developer ID or notarized, so macOS warns the first time you open it.
+- **How it was made.** Written with an AI coding assistant (Claude Code), with unit tests and the
+  author's use on that one Mac. It hasn't had an independent code review or security audit, and it's
+  young, so expect some rough edges.
+- **No warranty, no affiliation.** MIT-licensed, provided as is; not affiliated with Apple or with the
+  projects in [Credits](#credits-and-independence).
+
+Reports of what works and what doesn't on your Mac are the most useful contribution (see
+[Reporting a bug](#reporting-a-bug)).
 
 ## Installation
 
