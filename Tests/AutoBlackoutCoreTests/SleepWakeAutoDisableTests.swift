@@ -139,4 +139,112 @@ final class SleepWakeAutoDisableTests: XCTestCase {
         sleepAndWake(c)
         XCTAssertTrue(system.panelEnabled)
     }
+
+    // MARK: - A panel that's missing around sleep/wake, though this app never disabled it
+
+    /// The panel was never disabled by this app (managed == nil) but is missing from the online list,
+    /// and the external display has been unplugged: what a real wake after unplugging looked like.
+    private func panelMissingWithoutExternal() {
+        system.externals = []
+        system.panelEnabled = false
+    }
+
+    private var restoreRequests: Int { system.calls.filter { $0.enabled }.count }
+
+    func testMissingPanelWhileSleepingIsNotRestored() {
+        let c = makeController()
+        system.externals = [FakeDisplaySystem.external]
+        c.launch()
+        c.handlePowerEvent("NSWorkspaceWillSleepNotification", transition: .sleep)
+
+        panelMissingWithoutExternal()
+        for _ in 0..<5 { c.evaluate(reason: "poll"); scheduler.advance() }
+
+        XCTAssertEqual(restoreRequests, 0, "don't send enable requests or power-cycle while going to sleep")
+        XCTAssertEqual(system.powerCycleCount, 0)
+        XCTAssertFalse(c.restorePending)
+    }
+
+    func testPanelReturningOnItsOwnAfterWakeNeverTriggersARestore() {
+        let c = makeController()
+        system.externals = [FakeDisplaySystem.external]
+        c.launch()
+        c.handlePowerEvent("NSWorkspaceWillSleepNotification", transition: .sleep)
+        panelMissingWithoutExternal()
+        c.evaluate(reason: "callback")
+        c.handlePowerEvent("NSWorkspaceDidWakeNotification", transition: .wake)
+        c.evaluate(reason: "callback")
+        XCTAssertEqual(restoreRequests, 0)
+
+        clock = clock.addingTimeInterval(1)
+        system.panelEnabled = true // the panel came back by itself
+        c.evaluate(reason: "poll")
+        clock = clock.addingTimeInterval(BlackoutController.wakeSettleWindow + 1)
+        c.evaluate(reason: "poll")
+
+        XCTAssertEqual(restoreRequests, 0)
+        XCTAssertFalse(c.restorePending)
+    }
+
+    func testPanelStillMissingAfterTheWakeSettleWindowIsRestored() {
+        let c = makeController()
+        system.externals = [FakeDisplaySystem.external]
+        c.launch()
+        c.handlePowerEvent("NSWorkspaceWillSleepNotification", transition: .sleep)
+        panelMissingWithoutExternal()
+        c.handlePowerEvent("NSWorkspaceDidWakeNotification", transition: .wake)
+        c.evaluate(reason: "poll")
+        XCTAssertEqual(restoreRequests, 0, "still settling")
+
+        clock = clock.addingTimeInterval(BlackoutController.wakeSettleWindow + 1)
+        c.evaluate(reason: "poll")
+        scheduler.advance()
+
+        XCTAssertGreaterThan(restoreRequests, 0, "a panel that never comes back is still restored")
+        XCTAssertTrue(system.panelEnabled)
+    }
+
+    func testAnEndlessSleepDoesNotSuppressTheRestoreForever() {
+        let c = makeController()
+        system.externals = [FakeDisplaySystem.external]
+        c.launch()
+        c.handlePowerEvent("NSWorkspaceWillSleepNotification", transition: .sleep)
+        panelMissingWithoutExternal()
+        c.evaluate(reason: "poll")
+        XCTAssertEqual(restoreRequests, 0)
+
+        clock = clock.addingTimeInterval(BlackoutController.sleepSuppressionLimit + 1) // no wake ever seen
+        c.evaluate(reason: "poll")
+        scheduler.advance()
+
+        XCTAssertGreaterThan(restoreRequests, 0)
+    }
+
+    func testPanelThisAppDisabledIsStillRestoredImmediatelyWhenTheExternalIsGoneAfterSleep() {
+        let c = makeController()
+        c.launch()
+        connectExternalAndAutoDisable(c) // managed panel
+        c.handlePowerEvent("NSWorkspaceWillSleepNotification", transition: .sleep)
+
+        system.externals = [] // unplugged while asleep
+        c.evaluate(reason: "callback")
+        scheduler.advance()
+
+        XCTAssertTrue(system.panelEnabled, "our own disabled panel must not wait for sleep/wake to settle")
+        XCTAssertNil(c.managedDisplay)
+    }
+
+    func testForceRestoreIsNeverDelayedBySleepWakeSettling() {
+        let c = makeController()
+        system.externals = [FakeDisplaySystem.external]
+        c.launch()
+        c.handlePowerEvent("NSWorkspaceWillSleepNotification", transition: .sleep)
+        panelMissingWithoutExternal()
+
+        c.requestRestore(trigger: "menu force-restore")
+        scheduler.advance()
+
+        XCTAssertGreaterThan(restoreRequests, 0)
+        XCTAssertTrue(system.panelEnabled)
+    }
 }

@@ -62,6 +62,11 @@ Other measures baked in:
   controller now records which external displays were connected when going to sleep and treats those
   same displays returning within 60 seconds of waking as resuming, not connecting (confirmed from a
   real `power:` log).
+  Likewise, a built-in panel that this app did *not* disable can be missing from the online list
+  around a wake after the external was unplugged during sleep (the Mac may go straight back to
+  sleep). While sleeping, and for 8 seconds after a wake, that alone doesn't start a restore: doing
+  so power-cycled the displays and woke a Mac that was trying to sleep, with a ~13s "restoring"
+  overlay. A panel the app did disable, and the manual force-restore, are never delayed.
 - The built-in panel is treated as "ON" while it's merely display-asleep (it's still in the online
   list), so idle sleep with no external display doesn't trigger a restore attempt.
 - If an enable request was accepted but never applied (WindowServer logs `Failed to plug display 1`)
