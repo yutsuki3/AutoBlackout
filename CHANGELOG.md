@@ -5,6 +5,12 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+- Credits rewritten to state plainly how Lunar and screen-toggle relate to this project (functionality
+  informed by them, no code intentionally copied, not affiliated), and `THIRD_PARTY_NOTICES.md` added
+  with their MIT license notices. The `.app` bundle now includes `LICENSE` and
+  `THIRD_PARTY_NOTICES.md`.
+
 ## [1.2.4] - 2026-09-24
 
 ### Fixed
