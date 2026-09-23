@@ -1,0 +1,34 @@
+included:
+  - Sources
+  - Tests
+  - scripts
+
+excluded:
+  - .build
+
+# Tuned to this codebase: the restore state machine is intentionally long and documented inline.
+line_length:
+  warning: 130
+  error: 160
+  ignores_comments: true
+  ignores_urls: true
+
+# Short names are fine for tight scopes (`c` for the controller under test, `d` for a display).
+identifier_name:
+  min_length:
+    warning: 1
+
+# BlackoutController is a single state machine on purpose (every path goes through it), and its
+# test file is one long scenario list.
+file_length:
+  warning: 700
+type_body_length:
+  warning: 500
+function_body_length:
+  warning: 100
+cyclomatic_complexity:
+  warning: 20
+
+disabled_rules:
+  - trailing_comma # the codebase (and swift-format) use trailing commas in multi-line literals
+  - todo

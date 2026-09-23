@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- SwiftLint (`.swiftlint.yml`), enforced in CI with `--strict`.
 - Re-verification notice: when a macOS update changes the build of a Mac model that was verified
   earlier (shipped or locally), the menu says so and links to the verification steps, the launch log
   records it, and `--diagnose` reports it. OFF stays disabled until re-verified, as before.
