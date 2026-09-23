@@ -450,6 +450,41 @@ final class BlackoutControllerTests: XCTestCase {
         XCTAssertEqual(system.powerCycleCount, BlackoutController.maxPowerCycles + 1)
     }
 
+    // Power events are logged with the panel/display state, and logging never changes anything.
+    func testLogPowerEventRecordsStateAndSendsNoRequests() {
+        let c = makeController()
+        c.launch()
+        connectExternalAndAutoDisable(c)
+        let callsBefore = system.calls.count
+        let linesBefore = logger.lines.count
+
+        c.logPowerEvent("NSWorkspaceWillSleepNotification")
+        system.asleepExternals = [FakeDisplaySystem.external]
+        c.logPowerEvent("NSWorkspaceScreensDidSleepNotification")
+
+        let power = Array(logger.lines.dropFirst(linesBefore)).filter { $0.hasPrefix("power: ") }
+        XCTAssertEqual(power.count, 2)
+        XCTAssertTrue(power[0].contains("NSWorkspaceWillSleepNotification"))
+        XCTAssertTrue(power[0].contains("panel=\(FakeDisplaySystem.panel) managed=\(FakeDisplaySystem.panel)"), power[0])
+        XCTAssertTrue(power[1].contains("slp=1"), "the external's sleep state is captured: \(power[1])")
+        XCTAssertEqual(system.calls.count, callsBefore, "logging must not send any request")
+        XCTAssertEqual(system.powerCycleCount, 0)
+        XCTAssertFalse(system.panelEnabled)
+        XCTAssertEqual(c.managedDisplay, FakeDisplaySystem.panel)
+    }
+
+    // A sleep/wake that leaves everything unchanged still leaves a trace, unlike `evaluate`, which
+    // only logs when the state changed.
+    func testLogPowerEventLogsEvenWhenNothingChanged() {
+        let c = makeController()
+        c.launch()
+        c.evaluate(reason: "poll")
+        let before = logger.lines.count
+        c.logPowerEvent("NSWorkspaceDidWakeNotification")
+        c.logPowerEvent("NSWorkspaceDidWakeNotification")
+        XCTAssertEqual(logger.lines.count, before + 2)
+    }
+
     // Idle display sleep across every screen shouldn't restore the panel, and waking shouldn't re-disable it
     // (since a power cycle would wake the screen).
     func testIdleDisplaySleepKeepsPanelOffWithoutRedisable() {
