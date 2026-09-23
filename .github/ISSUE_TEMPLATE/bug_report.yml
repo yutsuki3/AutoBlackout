@@ -1,0 +1,31 @@
+name: Bug report
+description: Something doesn't work, or the built-in display didn't come back
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If the built-in display is stuck off right now, see the "Emergency recovery" section of the
+        README first (`AutoBlackout --restore`, or close and reopen the lid).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what actually happened.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnose
+    attributes:
+      label: Diagnostics
+      description: |
+        Paste the output of `/Applications/AutoBlackout.app/Contents/MacOS/AutoBlackout --diagnose`
+        (Mac model, macOS build, display list, and recent log lines). It never changes any display.
+      render: markdown
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: Setup
+      description: External monitor model, connection (USB-C / HDMI / dock), lid open or closed, mirroring on/off.

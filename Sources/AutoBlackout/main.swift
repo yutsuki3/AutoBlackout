@@ -1,6 +1,13 @@
 import AppKit
 import AutoBlackoutCore
 
+if CommandLine.arguments.contains("--version") {
+    print("AutoBlackout \(AppVersion.string)")
+    exit(0)
+}
+if CommandLine.arguments.contains("--diagnose") {
+    Diagnostics.run()
+}
 if CommandLine.arguments.contains("--verify-restore") {
     RestoreVerification.run()
 }

@@ -91,6 +91,17 @@ If it reports that it couldn't restore, keep the command running, close the lid,
 seconds, then open it. See [docs/HOST_VERIFICATION.md](docs/HOST_VERIFICATION.md) for more detail on
 what to do if the display doesn't come back.
 
+## Reporting a bug
+
+Run this and paste the output into the issue (it's read-only and never changes a display):
+
+```bash
+/Applications/AutoBlackout.app/Contents/MacOS/AutoBlackout --diagnose
+```
+
+It reports the app version, Mac model, macOS build, verification status, the display list, and the
+last lines of the log. `AutoBlackout --version` prints just the version.
+
 ## Testing
 
 ```bash
