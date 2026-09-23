@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         logger: logger
     )
     private let monitor = DisplayMonitor()
+    private let restoreOverlay = RestoreOverlayController()
     private var recoveryTimer: Timer?
     private var terminationTimer: Timer?
 
@@ -238,6 +239,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             toggleItem.title = "OFFは使用停止中（ONに戻せることが確認できていないため）"
         }
         restoreItem.isEnabled = status != .apiUnavailable && status != .notFound
+
+        restoreOverlay.update(
+            isRestoring: status == .restoring,
+            needsLidCycle: controller.needsLidCycle,
+            builtInDisplayID: controller.builtInPanelID()
+        )
     }
 }
 
