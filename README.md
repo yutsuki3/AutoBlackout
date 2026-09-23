@@ -10,6 +10,30 @@ It resolves the private APIs (`SLSConfigureDisplayEnabled` / `CGSConfigureDispla
 runtime with `dlsym`, so it can't be distributed through the Mac App Store, and a macOS update could
 break it at any time.
 
+## Status — please read first
+
+This is a small, **experimental** utility. Here is what that means, plainly:
+
+- **It has been verified on exactly one Mac**: a MacBook Air M3 (`Mac15,12`) on macOS 26.7
+  (`25G229`). On any other Mac or macOS build, the "turn OFF" feature is disabled until you verify it
+  yourself with `--verify-restore` (see [docs/HOST_VERIFICATION.md](docs/HOST_VERIFICATION.md)).
+  Passing that check on your Mac is evidence for that Mac and that macOS build only.
+- **It can leave the built-in display black.** It uses undocumented macOS APIs. On some Macs,
+  after the panel is turned off, macOS refuses to turn it back on until the displays are power-cycled
+  or, in the worst case, the Mac is rebooted. The app has a recovery procedure and `--restore`, but they
+  were only exercised on the machine above. Don't rely on it right before a presentation.
+- **It will probably break with some macOS updates**, and each update needs re-verifying.
+- **It is not signed with a Developer ID or notarized.** macOS will warn you the first time you open it.
+- **It was built with an AI coding assistant** (Claude Code) and has unit tests plus the author's own
+  daily use, but no independent review or security audit. Sleep/wake and unplug edge cases were still
+  being found and fixed during real use; expect more.
+- **It has no affiliation** with Apple, Lunar, or any project it was informed by (see
+  [Credits](#credits-and-independence)).
+- It is provided as is, under the [MIT License](LICENSE), without warranty.
+
+If that fits what you need, welcome. Reports of what works and what doesn't on your Mac are the most
+useful contribution (see [Reporting a bug](#reporting-a-bug)).
+
 ## Features
 
 - Automatically turns the built-in display off when an external monitor connects, and back on when

@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Changed
+- README now opens with a plain "Status" section: verified on one Mac only, can leave the built-in
+  display black, likely to break with macOS updates, unsigned, built with an AI assistant and not
+  independently reviewed, unaffiliated, no warranty.
+
+### Changed
 - Credits rewritten to state plainly how Lunar and screen-toggle relate to this project (functionality
   informed by them, no code intentionally copied, not affiliated), and `THIRD_PARTY_NOTICES.md` added
   with their MIT license notices. The `.app` bundle now includes `LICENSE` and
