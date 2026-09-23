@@ -54,6 +54,14 @@ Apple Developer certificate).
 To regenerate the app icon, run `swift scripts/make-icon.swift`, which rewrites
 `Resources/AppIcon.icns`.
 
+### Prebuilt release
+
+Once a release is published, download `AutoBlackout-vX.Y.Z.zip` from the
+[Releases page](https://github.com/yutsuki3/AutoBlackout/releases), check it against the attached
+`.sha256`, unzip, and move it to `/Applications`. It's ad-hoc signed, so use right-click > "Open" on
+first launch. Maintainers: pushing a `vX.Y.Z` tag builds and publishes it via
+`.github/workflows/release.yml`.
+
 ### Development build
 
 ```bash

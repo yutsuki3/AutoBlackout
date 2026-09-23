@@ -28,7 +28,7 @@ enum Diagnostics {
         out.append("")
         out.append("- app version: \(AppVersion.string)")
         out.append("- mac model: \(HostInfo.model)")
-        out.append("- macOS: \(ProcessInfo.processInfo.operatingSystemVersionString) (build \(HostInfo.osBuild))")
+        out.append("- macOS: \(ProcessInfo.processInfo.operatingSystemVersionString)")
         out.append("- host key: `\(HostVerification.current)`")
         out.append("- restore verification: \(HostVerification.sourceDescription)")
         out.append("- private API available: \(PrivateDisplayAPI.isAvailable)")
