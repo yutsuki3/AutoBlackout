@@ -36,7 +36,7 @@ if CommandLine.arguments.contains("--restore") {
 
     let deadline = Date().addingTimeInterval(300)
     let timer = Timer(timeInterval: 1.0, repeats: true) { _ in
-        if !controller.restorePending, controller.panelStatus == .on {
+        if !controller.restorePending, !controller.isRepairing, controller.panelStatus == .on {
             logger.log("--restore: panel is enabled")
             exit(0)
         }

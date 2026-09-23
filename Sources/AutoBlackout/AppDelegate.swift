@@ -82,16 +82,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         monitor.start()
 
-        // 画面全体のスリープ中は、スリープした外部ディスプレイを理由に内蔵を戻さない。
         // 蓋を開けた・スリープから復帰した直後はパネルが再通電しているので、ポーリングを待たずに評価する。
         let center = NSWorkspace.shared.notificationCenter
-        center.addObserver(forName: NSWorkspace.screensDidSleepNotification, object: nil, queue: .main) { [weak self] note in
-            self?.controller.displaysAsleep = true
-            self?.controller.evaluate(reason: note.name.rawValue)
-        }
         for name in [NSWorkspace.didWakeNotification, NSWorkspace.screensDidWakeNotification] {
             center.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
-                self?.controller.displaysAsleep = false
                 self?.controller.evaluate(reason: note.name.rawValue)
             }
         }
@@ -126,7 +120,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let deadline = Date().addingTimeInterval(Self.terminationRestoreTimeout)
         let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] timer in
             guard let self else { return }
-            if !self.controller.restorePending, self.controller.managedDisplay == nil {
+            if !self.controller.restorePending, self.controller.managedDisplay == nil, !self.controller.isRepairing {
                 timer.invalidate()
                 self.logger.log("terminate: panel restored; quitting")
                 NSApp.reply(toApplicationShouldTerminate: true)

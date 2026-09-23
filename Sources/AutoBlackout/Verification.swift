@@ -102,7 +102,7 @@ enum RestoreVerification {
                 controller.requestRestore(trigger: "verify")
 
             case .restoring:
-                if !controller.restorePending, controller.panelStatus == .on {
+                if !controller.restorePending, !controller.isRepairing, controller.panelStatus == .on {
                     logger.log(String(format: "verify: RESULT=restored %.1fs after the restore started", inPhase))
                     exit(0)
                 }
