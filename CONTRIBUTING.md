@@ -51,5 +51,5 @@ see "Emergency recovery" in the [README](README.md) first.
 
 ## Releases (maintainers)
 
-Move the `[Unreleased]` entries under a new version in `CHANGELOG.md`, merge, then push a
-`vX.Y.Z` tag. `.github/workflows/release.yml` builds and publishes the zip and its SHA256.
+Move the `[Unreleased]` entries under a new version in `CHANGELOG.md`, bump the version in
+`Resources/Info.plist` (so a source build reports the right one), merge, then push a `vX.Y.Z` tag. `.github/workflows/release.yml` builds and publishes the zip and its SHA256.

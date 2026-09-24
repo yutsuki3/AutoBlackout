@@ -9,9 +9,9 @@
 	<key>CFBundleIdentifier</key>
 	<string>io.github.yutsuki3.AutoBlackout</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>1.2.5</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0.0</string>
+	<string>1.2.5</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleLocalizations</key>
