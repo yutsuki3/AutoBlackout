@@ -17,6 +17,79 @@ jobs:
         run: swift test
       - name: Build .app
         run: VERSION="${GITHUB_REF_NAME#v}" scripts/build-app.sh
+        env:
+          APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
+      - name: Notarize
+        run: |
+          APP_BUNDLE=".build/release/AutoBlackout.app"
+          NOTARIZE_SCRIPT=$(mktemp)
+          cat > "$NOTARIZE_SCRIPT" <<'EOF'
+          #!/bin/bash
+          set -euo pipefail
+
+          APP_BUNDLE="$1"
+          APPLE_ID="$2"
+          APPLE_ID_APP_PASSWORD="$3"
+
+          # Create temporary zip for notarization
+          NOTARIZE_ZIP=$(mktemp).zip
+          ditto -c -k --keepParent "$APP_BUNDLE" "$NOTARIZE_ZIP"
+
+          echo "==> Submitting to Apple Notary Service..."
+          NOTARY_RESPONSE=$(xcrun notarytool submit "$NOTARIZE_ZIP" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_ID_APP_PASSWORD" \
+            --team-id "5F398JK79V" \
+            --wait 2>&1)
+
+          REQUEST_ID=$(echo "$NOTARY_RESPONSE" | grep -oP 'id: \K[a-f0-9-]+' | head -1)
+          if [ -z "$REQUEST_ID" ]; then
+            echo "Failed to get request ID from notary response"
+            echo "$NOTARY_RESPONSE"
+            exit 1
+          fi
+
+          echo "Request ID: $REQUEST_ID"
+
+          echo "==> Waiting for notarization to complete..."
+          STATUS="In Progress"
+          TIMEOUT=600
+          ELAPSED=0
+          while [ "$STATUS" = "In Progress" ]; do
+            if [ $ELAPSED -gt $TIMEOUT ]; then
+              echo "Notarization timeout"
+              exit 1
+            fi
+            sleep 10
+            ELAPSED=$((ELAPSED + 10))
+            STATUS=$(xcrun notarytool info "$REQUEST_ID" \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_ID_APP_PASSWORD" \
+              --team-id "5F398JK79V" 2>&1 | grep -oP 'status: \K\w+' || echo "Unknown")
+          done
+
+          if [ "$STATUS" != "Accepted" ]; then
+            echo "Notarization failed with status: $STATUS"
+            xcrun notarytool log "$REQUEST_ID" \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_ID_APP_PASSWORD" \
+              --team-id "5F398JK79V"
+            exit 1
+          fi
+
+          echo "✅ Notarization accepted"
+          rm "$NOTARIZE_ZIP"
+          EOF
+
+          chmod +x "$NOTARIZE_SCRIPT"
+          "$NOTARIZE_SCRIPT" "$APP_BUNDLE" "${{ secrets.APPLE_ID }}" "${{ secrets.APPLE_ID_APP_PASSWORD }}"
+          rm "$NOTARIZE_SCRIPT"
+      - name: Staple notary ticket
+        run: |
+          APP_BUNDLE=".build/release/AutoBlackout.app"
+          echo "==> Stapling notary ticket..."
+          xcrun stapler staple "$APP_BUNDLE"
+          echo "✅ Stapled"
       - name: Package
         run: |
           cd .build/release
