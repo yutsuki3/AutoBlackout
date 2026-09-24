@@ -31,8 +31,15 @@ if [ -n "${VERSION:-}" ]; then
   /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" "$APP_BUNDLE/Contents/Info.plist"
 fi
 
-echo "==> ad-hoc codesign"
-codesign --force --deep --sign - "$APP_BUNDLE"
+echo "==> codesign with Developer ID"
+# Use environment variable if set (CI), otherwise use SHA1 fingerprint to uniquely identify
+if [ -n "${APPLE_DEVELOPER_ID_APPLICATION:-}" ]; then
+  CODESIGN_IDENTITY="$APPLE_DEVELOPER_ID_APPLICATION"
+else
+  # Use SHA1 fingerprint to avoid ambiguity with multiple certificates
+  CODESIGN_IDENTITY="E6D18CCFBAF9523105A61D1BBAFFBBA3B9E5C936"
+fi
+codesign --force --deep --sign "$CODESIGN_IDENTITY" "$APP_BUNDLE"
 
 echo "==> done: $APP_BUNDLE"
 echo ""
