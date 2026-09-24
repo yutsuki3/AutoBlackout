@@ -39,7 +39,8 @@ Known limitations / ideas (contributions welcome):
 
 ## Requirements
 
-- macOS 13 (Ventura) or later.
+- macOS 13 (Ventura) or later to build and launch it (the minimum deployment target). CI builds on
+  macOS 15, and the restore behavior has been verified on macOS 26.7 only (see below).
 - Apple Silicon only. The private API used to fully disconnect the built-in display doesn't behave
   the same way on Intel Macs, so the OFF feature is disabled there (and `--verify-restore` refuses to
   run).

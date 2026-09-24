@@ -5,16 +5,23 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
-### Changed
-- README opens with a short "Experimental" notice and has a "Before you use it" section: where it
-  has been verified, what can go wrong and how it recovers, compatibility, unsigned, no warranty and
-  no affiliation.
+## [1.2.5] - 2026-09-24
+
+### Added
+- `THIRD_PARTY_NOTICES.md` with the MIT license notices of the projects that informed this one, and
+  a `LICENSE` + `THIRD_PARTY_NOTICES.md` copy inside the `.app` bundle (the 1.2.4 download didn't
+  include them).
 
 ### Changed
+- README opens with a short "Experimental" notice and has a "Before you use it" section: where it has
+  been verified, what can go wrong and how it recovers, compatibility, unsigned, no warranty and no
+  affiliation.
 - Credits rewritten to state plainly how Lunar and screen-toggle relate to this project (functionality
-  informed by them, no code intentionally copied, not affiliated), and `THIRD_PARTY_NOTICES.md` added
-  with their MIT license notices. The `.app` bundle now includes `LICENSE` and
-  `THIRD_PARTY_NOTICES.md`.
+  informed by them, no code intentionally copied, not affiliated).
+- README Requirements: macOS 13 is the minimum deployment target; CI builds on macOS 15 and the
+  restore behavior has been verified on macOS 26.7.
+- `Resources/Info.plist` carries the current version, so `--version` is right for source builds too.
+- CI runs with read-only token permissions, and the GitHub Actions are pinned to commit SHAs.
 
 ## [1.2.4] - 2026-09-24
 
