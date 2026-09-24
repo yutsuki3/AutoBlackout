@@ -26,5 +26,3 @@ jobs:
         run: swift test
       - name: Package .app
         run: scripts/build-app.sh
-        env:
-          APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
