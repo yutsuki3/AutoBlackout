@@ -17,8 +17,6 @@ jobs:
         run: swift test
       - name: Build .app
         run: VERSION="${GITHUB_REF_NAME#v}" scripts/build-app.sh
-        env:
-          APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
       - name: Notarize
         run: |
           APP_BUNDLE=".build/release/AutoBlackout.app"
