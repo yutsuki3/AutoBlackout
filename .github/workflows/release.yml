@@ -40,7 +40,7 @@ jobs:
             --team-id "5F398JK79V" \
             --wait 2>&1)
 
-          REQUEST_ID=$(echo "$NOTARY_RESPONSE" | grep -oP 'id: \K[a-f0-9-]+' | head -1)
+          REQUEST_ID=$(echo "$NOTARY_RESPONSE" | grep -E 'id: [a-f0-9-]+' | sed -E 's/.*id: ([a-f0-9-]+).*/\1/' | head -1)
           if [ -z "$REQUEST_ID" ]; then
             echo "Failed to get request ID from notary response"
             echo "$NOTARY_RESPONSE"
@@ -63,7 +63,7 @@ jobs:
             STATUS=$(xcrun notarytool info "$REQUEST_ID" \
               --apple-id "$APPLE_ID" \
               --password "$APPLE_ID_APP_PASSWORD" \
-              --team-id "5F398JK79V" 2>&1 | grep -oP 'status: \K\w+' || echo "Unknown")
+              --team-id "5F398JK79V" 2>&1 | grep 'status:' | sed -E 's/.*status: +([^ ]+).*/\1/' || echo "Unknown")
           done
 
           if [ "$STATUS" != "Accepted" ]; then
