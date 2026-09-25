@@ -4,16 +4,31 @@ import ServiceManagement
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let logger = FileEventLogger()
+    // Held directly (not just inside `controller`) so the "Verify this Mac" flow can flip
+    // `allowsDisableForVerification` on the one `LiveDisplaySystem` the app actually uses, instead of
+    // standing up a second display system + controller pair against the same state store.
+    private let displaySystem = LiveDisplaySystem()
+    private let stateStore = UserDefaultsStateStore()
     private lazy var controller = BlackoutController(
-        system: LiveDisplaySystem(),
-        store: UserDefaultsStateStore(),
+        system: displaySystem,
+        store: stateStore,
         scheduler: MainQueueScheduler(),
+        logger: logger
+    )
+    private lazy var hostVerifier = InAppHostVerifier(
+        controller: controller,
+        system: displaySystem,
+        store: stateStore,
         logger: logger
     )
     private let monitor = DisplayMonitor()
     private let restoreOverlay = RestoreOverlayController()
     private var recoveryTimer: Timer?
     private var terminationTimer: Timer?
+    /// Set while `hostVerifier` is in its "disabling" or "holding" phase, so `refresh()` can show
+    /// progress text instead of the plain panel status. `nil` once it reaches "restoring" — from then
+    /// on the normal restoring UI (status text + HUD) already says the same thing.
+    private var verifyProgressPhase: InAppHostVerifier.Phase?
 
     /// How long to wait for the restore before quitting. On the M3, the enable request doesn't
     /// succeed on the first try and, with a power cycle in between, can take 10+ seconds.
@@ -25,7 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var autoModeItem: NSMenuItem!
     private var loginItemItem: NSMenuItem!
     private var statusLabelItem: NSMenuItem!
-    private var reverifyItem: NSMenuItem!
+    private var verifyItem: NSMenuItem!
 
     private static let verificationDocsURL = URL(
         string: "https://github.com/yutsuki3/AutoBlackout/blob/main/docs/HOST_VERIFICATION.md#verifying-the-restore-procedure-on-your-mac"
@@ -46,15 +61,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusLabelItem.isEnabled = false
         menu.addItem(statusLabelItem)
 
-        // Only shown when a macOS update invalidated an earlier verification of this Mac model.
-        reverifyItem = NSMenuItem(
-            title: L("macOS was updated — re-verify to enable OFF…"),
-            action: #selector(openVerificationDocs),
+        // Shown whenever this Mac model + macOS build isn't verified to restore the display
+        // correctly (never verified, or a macOS update invalidated an earlier verification).
+        verifyItem = NSMenuItem(
+            title: L("Verify this Mac to enable OFF…"),
+            action: #selector(verifyThisMac),
             keyEquivalent: ""
         )
-        reverifyItem.target = self
-        reverifyItem.isHidden = true
-        menu.addItem(reverifyItem)
+        verifyItem.target = self
+        verifyItem.isHidden = true
+        menu.addItem(verifyItem)
         menu.addItem(.separator())
 
         toggleItem = NSMenuItem(
@@ -84,7 +100,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(autoModeItem)
         if !controller.isDisableSupported {
             if let notice = HostVerification.reverificationNotice {
-                logger.log("re-verification needed: \(notice); run --verify-restore --confirm-reboot-risk")
+                logger.log("re-verification needed: \(notice); use \"Verify this Mac\" in the menu, or "
+                    + "run --verify-restore --confirm-reboot-risk")
             }
             controller.isAutoModeEnabled = false
             autoModeItem.state = .off
@@ -108,6 +125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.menu = menu
 
         controller.onStateChange = { [weak self] in self?.refresh() }
+        hostVerifier.onPhaseChange = { [weak self] phase in self?.handleVerifyPhaseChange(phase) }
 
         monitor.onChange = { [weak self] displayID, flags in
             self?.controller.evaluate(reason: "callback id=\(displayID) flags=0x\(String(flags.rawValue, radix: 16))")
@@ -214,6 +232,111 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         autoModeItem.state = controller.isAutoModeEnabled ? .on : .off
     }
 
+    @objc private func verifyThisMac() {
+        guard !hostVerifier.isRunning else { return }
+        let alert = NSAlert()
+        alert.messageText = L("Verify this Mac?")
+        // swiftlint:disable:next line_length
+        alert.informativeText = L("This disables the built-in display once to test whether it comes back on its own. If it doesn't, a reboot will be required.\n\nBefore continuing: connect an external display, keep the lid open, and stay to watch it.\n\nOn success, this Mac model and macOS build are remembered as verified, and the OFF feature becomes available.")
+        alert.addButton(withTitle: L("Cancel"))
+        alert.addButton(withTitle: L("Verify Now"))
+        alert.addButton(withTitle: L("Learn More…"))
+        NSApp.activate(ignoringOtherApps: true)
+        switch alert.runModal() {
+        case .alertSecondButtonReturn:
+            beginVerification()
+        case .alertThirdButtonReturn:
+            openVerificationDocs()
+        default:
+            break
+        }
+    }
+
+    private func beginVerification() {
+        switch hostVerifier.start() {
+        case .started:
+            refresh()
+        case .busy:
+            showBusyAlert()
+        case .blocked(let problems):
+            showBlockedAlert(problems)
+        }
+    }
+
+    private func showBusyAlert() {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = L("Can't verify yet")
+        // swiftlint:disable:next line_length
+        alert.informativeText = L("AutoBlackout is already changing the built-in display's state. Wait a moment and try again.")
+        alert.addButton(withTitle: L("OK"))
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
+    }
+
+    private func handleVerifyPhaseChange(_ phase: InAppHostVerifier.Phase) {
+        switch phase {
+        case .disabling:
+            verifyProgressPhase = .disabling
+        case .holding:
+            verifyProgressPhase = .holding
+        case .restoring:
+            // The normal restoring status text + HUD (driven by `controller.panelStatus`) already
+            // say the same thing from here on.
+            verifyProgressPhase = nil
+        case .succeeded:
+            verifyProgressPhase = nil
+            controller.isAutoModeEnabled = true
+            autoModeItem.state = .on
+        case .failed:
+            verifyProgressPhase = nil
+        }
+        refresh()
+        switch phase {
+        case .succeeded: showVerifySucceededAlert()
+        case .failed(let reason): showVerifyFailedAlert(reason: reason)
+        default: break
+        }
+    }
+
+    private func showBlockedAlert(_ problems: [RestoreVerificationProblem]) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = L("Can't verify yet")
+        alert.informativeText = problems.map { "• " + $0.localizedDescription }.joined(separator: "\n")
+        alert.addButton(withTitle: L("OK"))
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
+    }
+
+    private func showVerifySucceededAlert() {
+        let alert = NSAlert()
+        alert.messageText = L("This Mac is now verified")
+        // swiftlint:disable:next line_length
+        alert.informativeText = L("The OFF feature is now available, and “Auto-OFF on external monitor connect” has been turned on.")
+        alert.addButton(withTitle: L("OK"))
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
+    }
+
+    private func showVerifyFailedAlert(reason: InAppHostVerifier.FailureReason) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        switch reason {
+        case .didNotDisable:
+            alert.messageText = L("Verification didn't run")
+            // swiftlint:disable:next line_length
+            alert.informativeText = L("The built-in display didn't turn off, so nothing was changed. Check “Show Logs” for details.")
+        case .timedOut:
+            alert.messageText = L("Verification didn't finish")
+            // swiftlint:disable:next line_length
+            alert.informativeText = L("The built-in display hasn't come back yet. AutoBlackout keeps retrying in the background — try closing the lid, waiting a few seconds, then opening it. This Mac stays unverified until the restore succeeds.")
+        }
+        alert.addButton(withTitle: L("OK"))
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
+    }
+
     @objc private func openVerificationDocs() {
         NSWorkspace.shared.open(Self.verificationDocsURL)
     }
@@ -252,41 +375,60 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func refresh() {
         let status = controller.panelStatus
-        switch status {
-        case .apiUnavailable:
-            statusLabelItem.title = L("Private API unavailable on this macOS version")
-        case .notFound:
-            statusLabelItem.title = L("Built-in display not found")
-        case .on:
-            statusLabelItem.title = L("Built-in display: ON")
-        case .off:
-            statusLabelItem.title = L("Built-in display: OFF")
-        case .restoring:
-            statusLabelItem.title = controller.needsLidCycle
-                ? L("Built-in display: waiting to restore — close the lid, then open it")
-                : L("Built-in display: restoring…")
+        let isVerifying = hostVerifier.isRunning
+        if let progress = verifyProgressPhase {
+            statusLabelItem.title = verifyStatusText(for: progress)
+        } else {
+            switch status {
+            case .apiUnavailable:
+                statusLabelItem.title = L("Private API unavailable on this macOS version")
+            case .notFound:
+                statusLabelItem.title = L("Built-in display not found")
+            case .on:
+                statusLabelItem.title = L("Built-in display: ON")
+            case .off:
+                statusLabelItem.title = L("Built-in display: OFF")
+            case .restoring:
+                statusLabelItem.title = controller.needsLidCycle
+                    ? L("Built-in display: waiting to restore — close the lid, then open it")
+                    : L("Built-in display: restoring…")
+            }
         }
         let isOff = status == .off || status == .restoring
         toggleItem.title = isOff ? L("Turn built-in display back ON") : L("Turn built-in display OFF")
-        toggleItem.isEnabled = status != .apiUnavailable && status != .notFound
+        toggleItem.isEnabled = !isVerifying && status != .apiUnavailable && status != .notFound
             && !controller.isChanging
             && (isOff || (controller.isDisableSupported && controller.hasUsableExternalDisplay))
         let reverificationNotice = HostVerification.reverificationNotice
-        reverifyItem.isHidden = controller.isDisableSupported || reverificationNotice == nil
+        verifyItem.isHidden = controller.isDisableSupported || !HostInfo.isAppleSilicon
+        verifyItem.title = reverificationNotice != nil
+            ? L("macOS was updated — re-verify to enable OFF…")
+            : L("Verify this Mac to enable OFF…")
+        verifyItem.isEnabled = !isVerifying
         if !isOff, !controller.isDisableSupported {
             toggleItem.title = !HostInfo.isAppleSilicon
                 ? L("OFF is disabled (Intel Macs are not supported)")
                 : reverificationNotice != nil
                 ? L("OFF is disabled (macOS was updated — restore needs re-verifying)")
-                : L("OFF is disabled (restore not verified on this Mac — see README)")
+                : L("OFF is disabled (restore not verified on this Mac — see “Verify this Mac” in this menu)")
         }
-        restoreItem.isEnabled = status != .apiUnavailable && status != .notFound
+        restoreItem.isEnabled = !isVerifying && status != .apiUnavailable && status != .notFound
+        autoModeItem.isEnabled = !isVerifying && controller.isDisableSupported
 
         restoreOverlay.update(
             isRestoring: status == .restoring,
             needsLidCycle: controller.needsLidCycle,
             builtInDisplayID: controller.builtInPanelID()
         )
+    }
+
+    private func verifyStatusText(for phase: InAppHostVerifier.Phase) -> String {
+        switch phase {
+        case .holding:
+            return L("Verifying this Mac: restoring shortly…")
+        default:
+            return L("Verifying this Mac: turning built-in display off…")
+        }
     }
 }
 

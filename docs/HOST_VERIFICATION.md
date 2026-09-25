@@ -110,6 +110,27 @@ the build string, so a listed model needs re-verifying after every update too.
 
 ## Verifying the restore procedure on your Mac
 
+### From the menu (recommended)
+
+Click the menu bar icon and choose **Verify this Mac to enable OFF…**. It explains the same risk as
+below, and asks you to connect an external display, keep the lid open and stay to watch it before
+you confirm. It then runs the exact procedure described above — disable once, wait, restore, confirm
+— using the running app instead of a second process. **If it doesn't come back, a reboot is
+required**, same as the Terminal command. On success, this exact Mac model + macOS build is
+remembered as verified and the OFF feature becomes available immediately — no relaunch needed, and
+"Auto-OFF on external monitor connect" is turned back on automatically.
+
+After a macOS update, the menu item's title changes to "macOS was updated — re-verify to enable
+OFF…" (and `--diagnose` reports it) until you run it again. Re-run this after every macOS update, on
+any machine, verified or not — a build change means the WindowServer behavior underneath hasn't been
+re-checked on it, so the app requires it to be re-verified again.
+
+The menu item only runs the "restore right away" variant below; use the Terminal command with
+`--after-unplug` if you specifically want to verify the restore that happens when the external
+display is unplugged while OFF.
+
+### From Terminal
+
 ```bash
 .build/release/AutoBlackout --verify-restore --confirm-reboot-risk
 ```
@@ -117,12 +138,8 @@ the build string, so a listed model needs re-verifying after every update too.
 This disables the built-in display once and checks whether the restore procedure above brings it
 back. **If it doesn't come back, a reboot is required** — only run this with an external display and
 power connected, the lid open, and you watching. On success, this exact Mac model + macOS build is
-remembered as verified, and the OFF feature becomes available.
-
-After a macOS update, the menu shows "macOS was updated — re-verify to enable OFF…" (and
-`--diagnose` reports it) until you do. Re-run this after every macOS update, on any machine, verified or not — a build change means the
-WindowServer behavior underneath hasn't been re-checked on it, so the app requires it to be
-re-verified again.
+remembered as verified, and the OFF feature becomes available — including in an already-running app,
+once it next re-checks (e.g. the next time you open its menu).
 
 Add `--after-unplug` to instead verify the restore that happens when the external display is
 unplugged while OFF, rather than requesting a restore yourself:

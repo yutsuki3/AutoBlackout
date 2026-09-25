@@ -5,6 +5,13 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- "Verify this Mac to enable OFF…" menu item: runs the same restore-verification procedure as
+  `AutoBlackout --verify-restore --confirm-reboot-risk` from inside the running app, so an
+  unverified Mac no longer needs Terminal to enable the OFF feature. It walks through the same risk
+  warning and preflight checks as the command-line version, then disables the built-in display once
+  and confirms the restore before marking the host verified — no relaunch needed afterward.
+
 ## [1.2.5] - 2026-09-24
 
 ### Added
