@@ -5,6 +5,10 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+- The menu bar icon now shows a slashed laptop while the built-in display is OFF (or restoring),
+  so the current state is visible without opening the menu.
+
 ## [1.2.5] - 2026-09-24
 
 ### Added
