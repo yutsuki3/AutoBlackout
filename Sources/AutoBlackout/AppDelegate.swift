@@ -267,7 +267,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = L("Can't verify yet")
-        // swiftlint:disable:next line_length
         alert.informativeText = L("AutoBlackout is already changing the built-in display's state. Wait a moment and try again.")
         alert.addButton(withTitle: L("OK"))
         NSApp.activate(ignoringOtherApps: true)
