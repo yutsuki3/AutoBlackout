@@ -111,29 +111,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         controller.onStateChange = { [weak self] in self?.refresh() }
 
-        // The transition animation only ever delays the controller's auto-OFF (through the gate);
-        // `release` asks the controller to re-evaluate once the animation is done or abandoned.
-        controller.autoDisableGate = transitionCoordinator
-        transitionCoordinator.onRelease = { [weak self] in
-            self?.controller.evaluate(reason: "transition")
-        }
-        monitor.onEvent = { [weak self] event in
-            guard let self else { return }
-            self.transitionCoordinator.handle(event)
-            // The "begin" phase says nothing about the new topology, so the controller only ever
-            // sees completed reconfigurations.
-            guard case let .didComplete(displayID, flags) = event else { return }
-            self.controller.evaluate(reason: "callback id=\(displayID) flags=0x\(String(flags.rawValue, radix: 16))")
-        }
-        monitor.start()
-
-        // AppKit learns about a new screen slightly after CoreGraphics does; a held transition
-        // retries as soon as NSScreen catches up.
-        NotificationCenter.default.addObserver(
-            forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
-        ) { [weak self] _ in
-            self?.controller.evaluate(reason: "screen-parameters")
-        }
+        wireDisplayEvents()
 
         // Right after opening the lid or waking from sleep, the panel has just been re-powered, so
         // evaluate immediately instead of waiting for the next poll. Sleep and wake are also
@@ -168,6 +146,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         recoveryTimer = timer
 
         refresh()
+    }
+
+    /// Connects display reconfiguration events to the controller and the transition coordinator.
+    private func wireDisplayEvents() {
+        // The transition animation only ever delays the controller's auto-OFF (through the gate);
+        // `release` asks the controller to re-evaluate once the animation is done or abandoned.
+        controller.autoDisableGate = transitionCoordinator
+        transitionCoordinator.onRelease = { [weak self] in
+            self?.controller.evaluate(reason: "transition")
+        }
+        monitor.onEvent = { [weak self] event in
+            guard let self else { return }
+            self.transitionCoordinator.handle(event)
+            // The "begin" phase says nothing about the new topology, so the controller only ever
+            // sees completed reconfigurations.
+            guard case let .didComplete(displayID, flags) = event else { return }
+            self.controller.evaluate(reason: "callback id=\(displayID) flags=0x\(String(flags.rawValue, radix: 16))")
+        }
+        monitor.start()
+
+        // AppKit learns about a new screen slightly after CoreGraphics does; a held transition
+        // retries as soon as NSScreen catches up.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.controller.evaluate(reason: "screen-parameters")
+        }
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
