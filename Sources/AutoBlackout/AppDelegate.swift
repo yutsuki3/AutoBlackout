@@ -4,14 +4,16 @@ import ServiceManagement
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let logger = FileEventLogger()
+    private let system = LiveDisplaySystem()
     private lazy var controller = BlackoutController(
-        system: LiveDisplaySystem(),
+        system: system,
         store: UserDefaultsStateStore(),
         scheduler: MainQueueScheduler(),
         logger: logger
     )
     private let monitor = DisplayMonitor()
     private let restoreOverlay = RestoreOverlayController()
+    private lazy var transitionCoordinator = makeTransitionCoordinator()
     private var recoveryTimer: Timer?
     private var terminationTimer: Timer?
 
@@ -109,10 +111,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         controller.onStateChange = { [weak self] in self?.refresh() }
 
-        monitor.onChange = { [weak self] displayID, flags in
-            self?.controller.evaluate(reason: "callback id=\(displayID) flags=0x\(String(flags.rawValue, radix: 16))")
+        // The transition animation only ever delays the controller's auto-OFF (through the gate);
+        // `release` asks the controller to re-evaluate once the animation is done or abandoned.
+        controller.autoDisableGate = transitionCoordinator
+        transitionCoordinator.onRelease = { [weak self] in
+            self?.controller.evaluate(reason: "transition")
+        }
+        monitor.onEvent = { [weak self] event in
+            guard let self else { return }
+            self.transitionCoordinator.handle(event)
+            // The "begin" phase says nothing about the new topology, so the controller only ever
+            // sees completed reconfigurations.
+            guard case let .didComplete(displayID, flags) = event else { return }
+            self.controller.evaluate(reason: "callback id=\(displayID) flags=0x\(String(flags.rawValue, radix: 16))")
         }
         monitor.start()
+
+        // AppKit learns about a new screen slightly after CoreGraphics does; a held transition
+        // retries as soon as NSScreen catches up.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.controller.evaluate(reason: "screen-parameters")
+        }
 
         // Right after opening the lid or waking from sleep, the panel has just been re-powered, so
         // evaluate immediately instead of waiting for the next poll. Sleep and wake are also
@@ -121,11 +142,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let center = NSWorkspace.shared.notificationCenter
         for name in [NSWorkspace.willSleepNotification, NSWorkspace.screensDidSleepNotification] {
             center.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
+                self?.transitionCoordinator.handlePower(.sleep)
                 self?.controller.handlePowerEvent(note.name.rawValue, transition: .sleep)
             }
         }
         for name in [NSWorkspace.didWakeNotification, NSWorkspace.screensDidWakeNotification] {
             center.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
+                self?.transitionCoordinator.handlePower(.wake)
                 self?.controller.handlePowerEvent(note.name.rawValue, transition: .wake)
                 self?.controller.evaluate(reason: note.name.rawValue)
             }
@@ -148,6 +171,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        transitionCoordinator.cancel(.applicationTermination)
         guard controller.managedDisplay != nil || controller.restorePending else {
             // Don't rely on `.forAppOnly`'s automatic restore; restore explicitly before quitting.
             controller.prepareForTermination()
@@ -192,6 +216,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        transitionCoordinator.cancel(.applicationTermination)
         recoveryTimer?.invalidate()
         monitor.stop()
     }
@@ -203,15 +228,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func toggle() {
         controller.toggleManually()
+        transitionCoordinator.cancel(.manualAction)
     }
 
     @objc private func forceRestore() {
         controller.requestRestore(trigger: "menu force-restore")
+        transitionCoordinator.cancel(.manualAction)
     }
 
     @objc private func toggleAutoMode() {
         controller.isAutoModeEnabled.toggle()
         autoModeItem.state = controller.isAutoModeEnabled ? .on : .off
+        transitionCoordinator.cancel(.manualAction)
+    }
+
+    private func makeTransitionCoordinator() -> DisplayTransitionCoordinator {
+        let system = self.system
+        return DisplayTransitionCoordinator(
+            presenter: TransitionOverlayController(),
+            scheduler: MainQueueScheduler(),
+            logger: logger,
+            bounds: { CGDisplayBounds($0) },
+            usableExternals: { DisplayLogic.usableExternals(in: system.snapshot()) },
+            prefersReducedMotion: { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+        )
     }
 
     @objc private func openVerificationDocs() {

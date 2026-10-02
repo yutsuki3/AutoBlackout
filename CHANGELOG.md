@@ -5,6 +5,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- A short display-transfer animation when an external display is newly connected: the built-in
+  screen appears to shrink and slide toward the external display's side, and a matching surface
+  grows in on the external display, right before the built-in display turns off. Uses only
+  AppKit/Core Animation overlays (no screen capture, no Screen Recording permission), honors Reduce
+  Motion, and never plays after a sleep/wake. If anything goes wrong the behavior is exactly the
+  previous immediate auto-OFF.
+
 ## [1.2.5] - 2026-09-24
 
 ### Added
