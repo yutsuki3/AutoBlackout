@@ -30,6 +30,10 @@ public final class BlackoutController {
     /// Notifies the UI whenever the state may have changed.
     public var onStateChange: (() -> Void)?
 
+    /// Consulted right before an automatic OFF is issued; may delay it (e.g. for a transition
+    /// animation). It can only postpone: every safety check still runs on the later `evaluate`.
+    public weak var autoDisableGate: AutoDisableGate?
+
     public private(set) var managedDisplay: CGDirectDisplayID? {
         didSet { store.managedDisplayID = managedDisplay }
     }
@@ -285,14 +289,25 @@ public final class BlackoutController {
             clearManagedState()
         }
 
-        if isAutoModeEnabled, autoDisablePending, enabled, !usable.isEmpty {
-            autoDisablePending = false
-            logger.log("auto: external display connected \(sorted(usable))")
-            disable(panel, usable: usable, trigger: "auto")
-            return
-        }
+        if performAutoDisableIfReady(panel: panel, enabled: enabled, usable: usable) { return }
 
         onStateChange?()
+    }
+
+    /// Issues the auto-OFF for a newly connected external display, unless the gate asks to wait.
+    /// A held auto-OFF stays pending and is retried on every later `evaluate`, which re-checks
+    /// everything from a fresh snapshot.
+    /// - Returns: whether this `evaluate` pass is finished (the disable was issued, or is held).
+    private func performAutoDisableIfReady(panel: CGDirectDisplayID, enabled: Bool, usable: Set<CGDirectDisplayID>) -> Bool {
+        guard isAutoModeEnabled, autoDisablePending, enabled, !usable.isEmpty else { return false }
+        if system.isDisableSupported, autoDisableGate?.shouldHoldAutoDisable(panel: panel, usable: usable) == true {
+            onStateChange?()
+            return true
+        }
+        autoDisablePending = false
+        logger.log("auto: external display connected \(sorted(usable))")
+        disable(panel, usable: usable, trigger: "auto")
+        return true
     }
 
     public enum PowerTransition {
