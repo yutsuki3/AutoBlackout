@@ -5,6 +5,12 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- Choosing "Turn built-in display back ON" with the external display connected could leave the
+  screens asleep after the restore power cycle. The wake after `pmset displaysleepnow` is now
+  declared three times (3s, 4.5s, 6s) and a no-display-sleep assertion is held for 12 seconds, so a
+  wake request lost mid-sleep no longer leaves the Mac asleep.
+
 ## [1.2.5] - 2026-09-24
 
 ### Added
