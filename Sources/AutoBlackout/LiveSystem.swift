@@ -43,16 +43,31 @@ final class LiveDisplaySystem: DisplaySystem {
             return
         }
         // Run on a background queue so this still wakes the displays even if the main thread is
-        // blocked inside a CG call.
-        DispatchQueue.global().asyncAfter(deadline: .now() + 3) {
-            var assertion: IOPMAssertionID = 0
-            let result = IOPMAssertionDeclareUserActivity(
-                "AutoBlackout: wake displays to re-power the built-in panel" as CFString,
-                kIOPMUserActiveLocal,
-                &assertion
-            )
-            guard result == kIOReturnSuccess else { return }
-            DispatchQueue.global().asyncAfter(deadline: .now() + 5) { IOPMAssertionRelease(assertion) }
+        // blocked inside a CG call. A single user-activity declaration can be swallowed if it lands
+        // while the displays are still going to sleep, leaving the Mac asleep, so repeat it, and hold
+        // a no-display-sleep assertion until the cycle is over so the screens can't drop back off.
+        let queue = DispatchQueue.global()
+        var keepAwake: IOPMAssertionID = 0
+        let held = IOPMAssertionCreateWithName(
+            kIOPMAssertPreventUserIdleDisplaySleep as CFString,
+            IOPMAssertionLevel(kIOPMAssertionLevelOn),
+            "AutoBlackout: keep displays awake while re-powering the built-in panel" as CFString,
+            &keepAwake
+        ) == kIOReturnSuccess
+        for delay in [3.0, 4.5, 6.0] {
+            queue.asyncAfter(deadline: .now() + delay) {
+                var activity: IOPMAssertionID = 0
+                let result = IOPMAssertionDeclareUserActivity(
+                    "AutoBlackout: wake displays to re-power the built-in panel" as CFString,
+                    kIOPMUserActiveLocal,
+                    &activity
+                )
+                guard result == kIOReturnSuccess else { return }
+                queue.asyncAfter(deadline: .now() + 5) { IOPMAssertionRelease(activity) }
+            }
+        }
+        if held {
+            queue.asyncAfter(deadline: .now() + 12) { IOPMAssertionRelease(keepAwake) }
         }
     }
 
