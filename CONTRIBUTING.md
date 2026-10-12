@@ -17,6 +17,9 @@ CI runs the same three commands (plus packaging the `.app`) on every pull reques
 
 ## Ground rules
 
+The full set of safety invariants and rules, written so AI coding agents can follow them too, is in
+[AGENTS.md](AGENTS.md). The short version:
+
 - **Tests never touch real hardware.** New logic goes in `AutoBlackoutCore` behind the
   `DisplaySystem` / `DisplayStateStore` / `Scheduler` protocols so it can be tested with the fakes
   in `Tests/AutoBlackoutCoreTests`. Tests in `AutoBlackoutTests` must use a temp directory and a
