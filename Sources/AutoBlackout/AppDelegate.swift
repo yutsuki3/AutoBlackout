@@ -23,6 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     )
     private let monitor = DisplayMonitor()
     private let restoreOverlay = RestoreOverlayController()
+    private var restoreHotKey: GlobalHotKey?
     private var recoveryTimer: Timer?
     private var terminationTimer: Timer?
     /// Set while `hostVerifier` is in its "disabling" or "holding" phase, so `refresh()` can show
@@ -85,6 +86,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             keyEquivalent: ""
         )
         restoreItem.target = self
+        // Shows the shortcut next to the item; the same combination also works system-wide (below).
+        restoreItem.keyEquivalent = "r"
+        restoreItem.keyEquivalentModifierMask = [.control, .option, .command]
         menu.addItem(restoreItem)
 
         autoModeItem = NSMenuItem(
@@ -128,6 +132,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.controller.evaluate(reason: "callback id=\(displayID) flags=0x\(String(flags.rawValue, radix: 16))")
         }
         monitor.start()
+
+        // A restore that works with no screen to click on. Restoring is always the safe direction, so
+        // an accidental press does no harm.
+        restoreHotKey = GlobalHotKey(
+            keyCode: GlobalHotKey.restoreKeyCode,
+            modifiers: GlobalHotKey.restoreModifiers
+        ) { [weak self] in self?.hotKeyRestore() }
+        if restoreHotKey == nil {
+            logger.log("restore shortcut (⌃⌥⌘R) could not be registered; the menu item still works")
+        }
 
         // Right after opening the lid or waking from sleep, the panel has just been re-powered, so
         // evaluate immediately instead of waiting for the next poll. Sleep and wake are also
@@ -218,6 +232,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func toggle() {
         controller.toggleManually()
+    }
+
+    private func hotKeyRestore() {
+        // Same conditions as the menu item: never interrupt a verification run.
+        guard !hostVerifier.isRunning, controller.isAPIAvailable else { return }
+        controller.requestRestore(trigger: "shortcut force-restore")
     }
 
     @objc private func forceRestore() {

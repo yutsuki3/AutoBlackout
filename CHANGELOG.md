@@ -5,6 +5,11 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- ⌃⌥⌘R restores the built-in display from anywhere, with no screen needed to open the menu. For when
+  the external display is connected but blank (say, its input was switched to another computer)
+  while the built-in display is off. The combination is shown on the menu's "Force-restore" item.
+
 ## [1.3.0] - 2026-10-12
 
 ### Added
