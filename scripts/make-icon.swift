@@ -38,26 +38,42 @@ func render(size: Int) -> Data? {
     let canvas = NSImage(size: NSSize(width: size, height: size))
     canvas.lockFocus()
 
-    let rect = NSRect(x: 0, y: 0, width: size, height: size)
-    let radius = CGFloat(size) * 0.225
+    // macOS app icons keep ~10% transparent margin (824pt body on a 1024pt canvas) and
+    // a soft drop shadow; filling the whole canvas looks oversized in the Dock/Finder.
+    let canvasSize = CGFloat(size)
+    let bodySize = canvasSize * 824 / 1024
+    let inset = (canvasSize - bodySize) / 2
+    let rect = NSRect(x: inset, y: inset, width: bodySize, height: bodySize)
+    let radius = bodySize * 0.225
     let background = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
+
+    NSGraphicsContext.saveGraphicsState()
+    let shadow = NSShadow()
+    shadow.shadowColor = NSColor.black.withAlphaComponent(0.3)
+    shadow.shadowBlurRadius = canvasSize * 0.02
+    shadow.shadowOffset = NSSize(width: 0, height: -canvasSize * 0.01)
+    shadow.set()
+    NSColor.black.setFill()
+    background.fill()
+    NSGraphicsContext.restoreGraphicsState()
+
     let gradient = NSGradient(
         starting: NSColor(calibratedRed: 0.20, green: 0.22, blue: 0.27, alpha: 1),
         ending: NSColor(calibratedRed: 0.05, green: 0.06, blue: 0.08, alpha: 1)
     )
     gradient?.draw(in: background, angle: -90)
 
-    if let glyph = whiteSilhouette(of: "laptopcomputer", pointSize: CGFloat(size) * 0.5) {
+    if let glyph = whiteSilhouette(of: "laptopcomputer", pointSize: bodySize * 0.5) {
         let origin = NSPoint(
             x: (CGFloat(size) - glyph.size.width) / 2,
-            y: (CGFloat(size) - glyph.size.height) / 2 + CGFloat(size) * 0.02
+            y: (CGFloat(size) - glyph.size.height) / 2 + bodySize * 0.02
         )
         glyph.draw(at: origin, from: .zero, operation: .sourceOver, fraction: 0.92)
     }
 
     // A diagonal bar signifying "blackout".
-    let barHeight = max(CGFloat(size) * 0.06, 2)
-    let barRect = NSRect(x: CGFloat(size) * 0.16, y: CGFloat(size) * 0.30, width: CGFloat(size) * 0.68, height: barHeight)
+    let barHeight = max(bodySize * 0.06, 2)
+    let barRect = NSRect(x: inset + bodySize * 0.16, y: inset + bodySize * 0.30, width: bodySize * 0.68, height: barHeight)
     let transform = NSAffineTransform()
     transform.translateX(by: CGFloat(size) / 2, yBy: CGFloat(size) / 2)
     transform.rotate(byDegrees: -35)
