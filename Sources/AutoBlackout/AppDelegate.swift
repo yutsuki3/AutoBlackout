@@ -315,9 +315,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func showVerifySucceededAlert() {
         let alert = NSAlert()
         alert.messageText = L("This Mac is now verified")
-        // swiftlint:disable:next line_length
         let autoOnText = L("The OFF feature is now available, and “Auto-OFF on external monitor connect” has been turned on.")
-        // swiftlint:disable:next line_length
         let autoOffText = L("The OFF feature is now available. “Auto-OFF on external monitor connect” stays off, as you set it.")
         alert.informativeText = controller.isAutoModeEnabled ? autoOnText : autoOffText
         alert.addButton(withTitle: L("OK"))
