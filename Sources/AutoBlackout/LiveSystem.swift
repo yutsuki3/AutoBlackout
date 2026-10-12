@@ -8,8 +8,11 @@ import os
 /// The real-hardware `DisplaySystem` implementation. This class's `setEnabled` is the only place
 /// that ever touches a real display.
 final class LiveDisplaySystem: DisplaySystem {
-    /// `--verify-restore` only: lets a disable request through even while `isDisableAllowed` is false.
-    private let allowsDisableForVerification: Bool
+    /// `--verify-restore`, and the in-app "Verify this Mac" flow, only: lets a disable request
+    /// through even while `isDisableAllowed` is false. `--verify-restore` pins this for its whole
+    /// process lifetime; the in-app flow toggles it on the app's single, shared `LiveDisplaySystem`
+    /// only while a verification run is in progress.
+    var allowsDisableForVerification: Bool
 
     init(allowsDisableForVerification: Bool = false) {
         self.allowsDisableForVerification = allowsDisableForVerification

@@ -16,10 +16,35 @@
 "Quit" = "終了";
 "macOS was updated — re-verify to enable OFF…" = "macOS が更新されました — オフ機能を使うには再検証してください…";
 "OFF is disabled (macOS was updated — restore needs re-verifying)" = "オフは無効です(macOS が更新されたため、復帰の再検証が必要です)";
-"OFF is disabled (restore not verified on this Mac — see README)" = "オフは無効です(この Mac では復帰が未検証です — README を参照)";
+"OFF is disabled (restore not verified on this Mac — see “Verify this Mac” in this menu)" = "オフは無効です(この Mac では復帰が未検証です — このメニューの「この Mac を検証」を参照)";
 "OFF is disabled (Intel Macs are not supported)" = "オフは無効です(Intel Mac には対応していません)";
 "Couldn't restore the built-in display, so quitting was cancelled" = "内蔵ディスプレイを復帰できなかったため、終了を取り消しました";
 "Still retrying in the background. Closing the lid and reopening it after a few seconds sometimes brings it back." = "バックグラウンドで再試行を続けています。蓋を閉じて数秒後に開くと復帰することがあります。";
 "A menu bar app that turns off the built-in display when an external display is connected.\nUses a private API, so it can't be distributed through the Mac App Store. MIT License." = "外部ディスプレイの接続時に内蔵ディスプレイを自動でオフにするメニューバーアプリです。\nプライベート API を使用するため、Mac App Store では配布できません。MIT ライセンス。";
 "Restoring the built-in display…" = "内蔵ディスプレイを復帰しています…";
 "The built-in display isn't coming back.\nClose the lid, wait a few seconds, then open it." = "内蔵ディスプレイが復帰しません。\n蓋を閉じて数秒待ってから、開いてください。";
+
+/* "Verify this Mac" menu item and flow (in-app replacement for `--verify-restore --confirm-reboot-risk`). */
+"Verify this Mac to enable OFF…" = "この Mac を検証してオフを有効にする…";
+"Verify this Mac?" = "この Mac を検証しますか?";
+"This disables the built-in display once to test whether it comes back on its own. If it doesn't, a reboot will be required.\n\nBefore continuing: connect an external display, keep the lid open, and stay to watch it.\n\nOn success, this Mac model and macOS build are remembered as verified, and the OFF feature becomes available." = "内蔵ディスプレイを一度オフにして、自動的に復帰するかを確認します。復帰しない場合は再起動が必要になります。\n\n続行する前に: 外部ディスプレイを接続し、蓋を開けたままにし、経過を見守ってください。\n\n成功すると、この Mac のモデルと macOS のビルドが検証済みとして記録され、オフ機能が使えるようになります。";
+"Cancel" = "キャンセル";
+"Verify Now" = "今すぐ検証";
+"Learn More…" = "詳しく見る…";
+"Can't verify yet" = "まだ検証できません";
+"AutoBlackout is already changing the built-in display's state. Wait a moment and try again." = "AutoBlackout は現在、内蔵ディスプレイの状態を変更中です。しばらく待ってからもう一度お試しください。";
+"This Mac has an Intel processor; the OFF feature isn't supported." = "この Mac は Intel プロセッサのため、オフ機能には対応していません。";
+"The private display API isn't available on this macOS version." = "この macOS ではプライベートディスプレイ API を利用できません。";
+"The built-in display isn't online right now." = "内蔵ディスプレイが現在オンラインではありません。";
+"Connect and wake an external display first." = "先に外部ディスプレイを接続してスリープを解除してください。";
+"Open the lid before verifying." = "検証する前に蓋を開けてください。";
+"A previous restore hasn't been confirmed yet — try “Force-restore built-in display” first." = "以前の復帰がまだ確認されていません — まず「内蔵ディスプレイを強制的に復帰する」を試してください。";
+"OK" = "OK";
+"Verifying this Mac: turning built-in display off…" = "この Mac を検証中: 内蔵ディスプレイをオフにしています…";
+"Verifying this Mac: restoring shortly…" = "この Mac を検証中: まもなく復帰します…";
+"This Mac is now verified" = "この Mac は検証済みになりました";
+"The OFF feature is now available, and “Auto-OFF on external monitor connect” has been turned on." = "オフ機能が使えるようになり、「外部モニタ接続時に自動でオフにする」がオンになりました。";
+"Verification didn't run" = "検証は実行されませんでした";
+"The built-in display didn't turn off, so nothing was changed. Check “Show Logs” for details." = "内蔵ディスプレイがオフになりませんでした。何も変更されていません。詳細は「ログを表示」で確認してください。";
+"Verification didn't finish" = "検証が完了しませんでした";
+"The built-in display hasn't come back yet. AutoBlackout keeps retrying in the background — try closing the lid, waiting a few seconds, then opening it. This Mac stays unverified until the restore succeeds." = "内蔵ディスプレイがまだ復帰していません。AutoBlackout はバックグラウンドで再試行を続けます — 蓋を閉じて数秒待ってから開いてみてください。復帰に成功するまで、この Mac は未検証のままです。";

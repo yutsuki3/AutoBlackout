@@ -50,16 +50,15 @@ enum RestoreVerification {
         )
         controller.isAutoModeEnabled = false
 
-        let snapshot = system.snapshot()
-        var problems: [String] = []
-        if !HostInfo.isAppleSilicon { problems.append("Intel Macs are not supported") }
-        if !controller.isAPIAvailable { problems.append("private API unavailable") }
-        if DisplayLogic.onlineBuiltIn(in: snapshot) == nil { problems.append("built-in panel is not online") }
-        if DisplayLogic.usableExternals(in: snapshot).isEmpty { problems.append("no usable external display") }
-        if HostInfo.isLidClosed != false { problems.append("lid is not open (or unknown)") }
-        if store.managedDisplayID != nil { problems.append("a previous restore is unconfirmed (managedDisplayID is set)") }
+        let problems = RestoreVerificationPreflight.problems(
+            isAppleSilicon: HostInfo.isAppleSilicon,
+            isAPIAvailable: controller.isAPIAvailable,
+            snapshot: system.snapshot(),
+            isLidClosed: HostInfo.isLidClosed,
+            hasUnconfirmedManagedDisplay: store.managedDisplayID != nil
+        )
         guard problems.isEmpty else {
-            logger.log("verify: preflight failed: " + problems.joined(separator: ", "))
+            logger.log("verify: preflight failed: " + problems.map(\.logDescription).joined(separator: ", "))
             exit(2)
         }
 

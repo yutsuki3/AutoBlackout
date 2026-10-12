@@ -46,7 +46,8 @@ Known limitations / ideas (contributions welcome):
   run).
 - The auto/manual **OFF** feature only works on a Mac model + macOS build combination that's been
   verified to restore the display correctly afterward. The app ships with one verified combination;
-  on any other machine, OFF stays disabled until you verify it yourself with one command. See
+  on any other machine, OFF stays disabled until you verify it yourself, either from the menu
+  ("Verify this Mac to enable OFF…") or with one Terminal command. See
   [docs/HOST_VERIFICATION.md](docs/HOST_VERIFICATION.md) for why this exists and how to verify your
   Mac. Nothing risky happens on an unverified machine — the feature is simply unavailable.
 
@@ -110,6 +111,12 @@ From the menu bar:
 
 - **Turn built-in display OFF / back ON** — manual toggle. Refuses to turn OFF with no external
   display connected, and is disabled entirely on an unverified host (see Requirements above).
+- **Verify this Mac to enable OFF…** — only shown while this Mac model + macOS build isn't verified.
+  Runs the same restore-verification procedure as `--verify-restore --confirm-reboot-risk` (see
+  [docs/HOST_VERIFICATION.md](docs/HOST_VERIFICATION.md)) without needing Terminal: it explains the
+  risk, then disables the built-in display once and confirms the restore procedure brings it back.
+  On success this Mac is remembered as verified and OFF becomes available immediately, no relaunch
+  needed.
 - **Force-restore built-in display** — always sends a restore request, regardless of the displayed status.
 - **Auto-OFF on external monitor connect** — toggles the automatic behavior.
 - **Launch at login** — registers/unregisters a login item (also visible under System Settings >
