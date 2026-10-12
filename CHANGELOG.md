@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-12
+
 ### Added
 - "Verify this Mac to enable OFF…" menu item: runs the same restore-verification procedure as
   `AutoBlackout --verify-restore --confirm-reboot-risk` from inside the running app, so an
