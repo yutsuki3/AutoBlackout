@@ -236,12 +236,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func showQuitCancelledAlert() {
-        let alert = NSAlert()
-        alert.messageText = L("Couldn't restore the built-in display, so quitting was cancelled")
-        // swiftlint:disable:next line_length
-        alert.informativeText = L("Still retrying in the background. Closing the lid and reopening it after a few seconds sometimes brings it back.")
-        NSApp.activate(ignoringOtherApps: true)
-        alert.runModal()
+        Alerts.present(
+            title: L("Couldn't restore the built-in display, so quitting was cancelled"),
+            // swiftlint:disable:next line_length
+            message: L("Still retrying in the background. Closing the lid and reopening it after a few seconds sometimes brings it back.")
+        )
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -281,15 +280,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func verifyThisMac() {
         guard !hostVerifier.isRunning else { return }
-        let alert = NSAlert()
-        alert.messageText = L("Verify this Mac?")
-        // swiftlint:disable:next line_length
-        alert.informativeText = L("This disables the built-in display once to test whether it comes back on its own. If it doesn't, a reboot will be required.\n\nBefore continuing: connect an external display, keep the lid open, and stay to watch it.\n\nOn success, this Mac model and macOS build are remembered as verified, and the OFF feature becomes available.")
-        alert.addButton(withTitle: L("Cancel"))
-        alert.addButton(withTitle: L("Verify Now"))
-        alert.addButton(withTitle: L("Learn More…"))
-        NSApp.activate(ignoringOtherApps: true)
-        switch alert.runModal() {
+        let response = Alerts.present(
+            title: L("Verify this Mac?"),
+            // swiftlint:disable:next line_length
+            message: L("This disables the built-in display once to test whether it comes back on its own. If it doesn't, a reboot will be required.\n\nBefore continuing: connect an external display, keep the lid open, and stay to watch it.\n\nOn success, this Mac model and macOS build are remembered as verified, and the OFF feature becomes available."),
+            buttons: [L("Cancel"), L("Verify Now"), L("Learn More…")]
+        )
+        switch response {
         case .alertSecondButtonReturn:
             beginVerification()
         case .alertThirdButtonReturn:
@@ -311,13 +308,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func showBusyAlert() {
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = L("Can't verify yet")
-        alert.informativeText = L("AutoBlackout is already changing the built-in display's state. Wait a moment and try again.")
-        alert.addButton(withTitle: L("OK"))
-        NSApp.activate(ignoringOtherApps: true)
-        alert.runModal()
+        Alerts.present(
+            title: L("Can't verify yet"),
+            message: L("AutoBlackout is already changing the built-in display's state. Wait a moment and try again."),
+            buttons: [L("OK")]
+        )
     }
 
     private func handleVerifyPhaseChange(_ phase: InAppHostVerifier.Phase) {
@@ -348,42 +343,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func showBlockedAlert(_ problems: [RestoreVerificationProblem]) {
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = L("Can't verify yet")
-        alert.informativeText = problems.map { "• " + $0.localizedDescription }.joined(separator: "\n")
-        alert.addButton(withTitle: L("OK"))
-        NSApp.activate(ignoringOtherApps: true)
-        alert.runModal()
+        Alerts.present(
+            title: L("Can't verify yet"),
+            message: problems.map { "• " + $0.localizedDescription }.joined(separator: "\n"),
+            buttons: [L("OK")]
+        )
     }
 
     private func showVerifySucceededAlert() {
-        let alert = NSAlert()
-        alert.messageText = L("This Mac is now verified")
         let autoOnText = L("The OFF feature is now available, and “Auto-OFF on external monitor connect” has been turned on.")
         let autoOffText = L("The OFF feature is now available. “Auto-OFF on external monitor connect” stays off, as you set it.")
-        alert.informativeText = controller.isAutoModeEnabled ? autoOnText : autoOffText
-        alert.addButton(withTitle: L("OK"))
-        NSApp.activate(ignoringOtherApps: true)
-        alert.runModal()
+        Alerts.present(
+            title: L("This Mac is now verified"),
+            message: controller.isAutoModeEnabled ? autoOnText : autoOffText,
+            buttons: [L("OK")]
+        )
     }
 
     private func showVerifyFailedAlert(reason: InAppHostVerifier.FailureReason) {
-        let alert = NSAlert()
-        alert.alertStyle = .warning
+        let title: String
+        let message: String
         switch reason {
         case .didNotDisable:
-            alert.messageText = L("Verification didn't run")
-            // swiftlint:disable:next line_length
-            alert.informativeText = L("The built-in display didn't turn off, so nothing was changed. Check “Show Logs” for details.")
+            title = L("Verification didn't run")
+            message = L("The built-in display didn't turn off, so nothing was changed. Check “Show Logs” for details.")
         case .timedOut:
-            alert.messageText = L("Verification didn't finish")
+            title = L("Verification didn't finish")
             // swiftlint:disable:next line_length
-            alert.informativeText = L("The built-in display hasn't come back yet. AutoBlackout keeps retrying in the background — try closing the lid, waiting a few seconds, then opening it. This Mac stays unverified until the restore succeeds.")
+            message = L("The built-in display hasn't come back yet. AutoBlackout keeps retrying in the background — try closing the lid, waiting a few seconds, then opening it. This Mac stays unverified until the restore succeeds.")
         }
-        alert.addButton(withTitle: L("OK"))
-        NSApp.activate(ignoringOtherApps: true)
-        alert.runModal()
+        Alerts.present(title: title, message: message, buttons: [L("OK")])
     }
 
     @objc private func openVerificationDocs() {
