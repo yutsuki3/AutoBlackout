@@ -5,6 +5,12 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- "Auto-OFF on external monitor connect" now remembers your choice across relaunches (and login
+  items). It used to come back on every launch, so a user who had turned it off would have the
+  built-in display switched off again the next time a monitor connected. Re-verifying after a macOS
+  update also keeps it off if you had turned it off.
+
 ## [1.3.0] - 2026-10-12
 
 ### Added

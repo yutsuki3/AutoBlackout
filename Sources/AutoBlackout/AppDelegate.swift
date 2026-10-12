@@ -93,7 +93,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             keyEquivalent: ""
         )
         autoModeItem.target = self
-        autoModeItem.state = .on
+        // Applied before `controller.launch()`, so a user who turned auto-OFF off never sees it fire
+        // after a relaunch.
+        controller.isAutoModeEnabled = stateStore.autoModePreference ?? true
+        autoModeItem.state = controller.isAutoModeEnabled ? .on : .off
         menu.addItem(autoModeItem)
         if !controller.isDisableSupported {
             if let notice = HostVerification.reverificationNotice {
@@ -227,6 +230,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func toggleAutoMode() {
         controller.isAutoModeEnabled.toggle()
         autoModeItem.state = controller.isAutoModeEnabled ? .on : .off
+        stateStore.autoModePreference = controller.isAutoModeEnabled
+        logger.log("auto mode set to \(controller.isAutoModeEnabled) from the menu")
     }
 
     @objc private func verifyThisMac() {
@@ -282,8 +287,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             verifyProgressPhase = nil
         case .succeeded:
             verifyProgressPhase = nil
-            controller.isAutoModeEnabled = true
-            autoModeItem.state = .on
+            // Re-verifying after a macOS update must not turn back on an auto-OFF the user had
+            // switched off; only a Mac with no saved choice gets it turned on.
+            controller.isAutoModeEnabled = stateStore.autoModePreference ?? true
+            autoModeItem.state = controller.isAutoModeEnabled ? .on : .off
         case .failed:
             verifyProgressPhase = nil
         }
@@ -309,7 +316,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let alert = NSAlert()
         alert.messageText = L("This Mac is now verified")
         // swiftlint:disable:next line_length
-        alert.informativeText = L("The OFF feature is now available, and “Auto-OFF on external monitor connect” has been turned on.")
+        let autoOnText = L("The OFF feature is now available, and “Auto-OFF on external monitor connect” has been turned on.")
+        // swiftlint:disable:next line_length
+        let autoOffText = L("The OFF feature is now available. “Auto-OFF on external monitor connect” stays off, as you set it.")
+        alert.informativeText = controller.isAutoModeEnabled ? autoOnText : autoOffText
         alert.addButton(withTitle: L("OK"))
         NSApp.activate(ignoringOtherApps: true)
         alert.runModal()

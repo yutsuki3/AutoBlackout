@@ -188,6 +188,18 @@ final class UserDefaultsStateStore: DisplayStateStore {
         set { write(newValue, "managedDisplayID") }
     }
 
+    /// The user's own choice for "Auto-OFF on external monitor connect". `nil` until they change it
+    /// from the menu. Written only from that explicit choice, never from a temporary override
+    /// (verification, quitting, an unverified host), so those can't overwrite what the user chose.
+    var autoModePreference: Bool? {
+        get { defaults.object(forKey: "autoModeEnabled") as? Bool }
+        set {
+            if let newValue { defaults.set(newValue, forKey: "autoModeEnabled") } else {
+                defaults.removeObject(forKey: "autoModeEnabled")
+            }
+        }
+    }
+
     private func read(_ key: String) -> CGDirectDisplayID? {
         (defaults.object(forKey: key) as? NSNumber).map { CGDirectDisplayID($0.uint32Value) }
     }
