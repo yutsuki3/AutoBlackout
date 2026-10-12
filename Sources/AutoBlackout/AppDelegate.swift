@@ -25,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let monitor = DisplayMonitor()
     private let restoreOverlay = RestoreOverlayController()
     private var restoreHotKey: GlobalHotKey?
+    private var terminationSignals: TerminationSignalHandler?
     private let countdownOverlay = AutoOffCountdownOverlayController()
     private var recoveryTimer: Timer?
     private var terminationTimer: Timer?
@@ -152,6 +153,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         registerRestoreHotKey()
         observePowerEvents()
+        terminationSignals = TerminationSignalHandler { [weak self] in
+            self?.logger.log("terminate: signal received; quitting through the normal path")
+            NSApp.terminate(nil)
+        }
 
         logger.log("host: " + HostInfo.summary)
 
@@ -201,6 +206,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        // A repeated quit request (say, a second SIGTERM) while the restore is still running must not
+        // start a second wait.
+        if terminationTimer?.isValid == true { return .terminateLater }
         guard controller.managedDisplay != nil || controller.restorePending else {
             // Don't rely on `.forAppOnly`'s automatic restore; restore explicitly before quitting.
             controller.prepareForTermination()
