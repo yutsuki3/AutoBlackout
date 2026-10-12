@@ -150,6 +150,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         monitor.start()
 
+        registerRestoreHotKey()
+        observePowerEvents()
+
+        logger.log("host: " + HostInfo.summary)
+
+        // Self-heal at launch (e.g. a previous process crashed while the display was disabled).
+        controller.launch()
+
+        // A safety net for callbacks that never arrive, arrive late, or arrive out of order:
+        // re-evaluate and correct every second.
+        let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
+            self?.controller.evaluate(reason: "poll")
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        recoveryTimer = timer
+
+        refresh()
+    }
+
+    private func registerRestoreHotKey() {
         // A restore that works with no screen to click on. Restoring is always the safe direction, so
         // an accidental press does no harm.
         restoreHotKey = GlobalHotKey(
@@ -159,7 +179,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if restoreHotKey == nil {
             logger.log("restore shortcut (⌃⌥⌘R) could not be registered; the menu item still works")
         }
+    }
 
+    private func observePowerEvents() {
         // Right after opening the lid or waking from sleep, the panel has just been re-powered, so
         // evaluate immediately instead of waiting for the next poll. Sleep and wake are also
         // reported to the controller: a system sleep/wake drops the external display out of the
@@ -176,21 +198,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self?.controller.evaluate(reason: note.name.rawValue)
             }
         }
-
-        logger.log("host: " + HostInfo.summary)
-
-        // Self-heal at launch (e.g. a previous process crashed while the display was disabled).
-        controller.launch()
-
-        // A safety net for callbacks that never arrive, arrive late, or arrive out of order:
-        // re-evaluate and correct every second.
-        let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
-            self?.controller.evaluate(reason: "poll")
-        }
-        RunLoop.main.add(timer, forMode: .common)
-        recoveryTimer = timer
-
-        refresh()
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
