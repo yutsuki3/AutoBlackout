@@ -32,6 +32,22 @@ final class UserDefaultsStateStoreTests: ScratchTestCase {
         XCTAssertEqual(store.managedDisplayID, UInt32.max)
     }
 
+    func testAutoModePreferenceStartsUnset() {
+        // Unset means "use the default (on)"; only an explicit menu choice is ever saved.
+        XCTAssertNil(UserDefaultsStateStore(defaults: defaults).autoModePreference)
+    }
+
+    func testAutoModePreferenceRoundTripsAcrossInstances() {
+        UserDefaultsStateStore(defaults: defaults).autoModePreference = false
+        XCTAssertEqual(UserDefaultsStateStore(defaults: defaults).autoModePreference, false)
+
+        UserDefaultsStateStore(defaults: defaults).autoModePreference = true
+        XCTAssertEqual(UserDefaultsStateStore(defaults: defaults).autoModePreference, true)
+
+        UserDefaultsStateStore(defaults: defaults).autoModePreference = nil
+        XCTAssertNil(defaults.object(forKey: "autoModeEnabled"))
+    }
+
     func testSettingNilRemovesTheKey() {
         let store = UserDefaultsStateStore(defaults: defaults)
         store.lastKnownBuiltInID = 3
