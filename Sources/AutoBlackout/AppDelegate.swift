@@ -37,6 +37,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// succeed on the first try and, with a power cycle in between, can take 10+ seconds.
     private static let terminationRestoreTimeout: TimeInterval = 60
 
+    /// How late the 1-second safety-net poll may fire, so the system can coalesce its wake-ups.
+    private static let pollTolerance: TimeInterval = 0.25
+
+    /// Everything `refresh()` reads that can change what the menu and icon show. When none of it
+    /// changed since the last refresh (the usual case on the 1-second poll), there is nothing to redo.
+    private struct RefreshInputs: Equatable {
+        var status: BlackoutController.PanelStatus
+        var isVerifying: Bool
+        var verifyProgressPhase: InAppHostVerifier.Phase?
+        var needsLidCycle: Bool
+        var isChanging: Bool
+        var isDisableSupported: Bool
+        var hasUsableExternalDisplay: Bool
+        var needsReverification: Bool
+    }
+
+    private var lastRefreshInputs: RefreshInputs?
+    /// Whether the previous refresh left a HUD up, so the refresh that takes it down isn't skipped.
+    private var lastRefreshHadHUD = false
+
     private var statusItem: NSStatusItem!
     private var toggleItem: NSMenuItem!
     private var restoreItem: NSMenuItem!
@@ -163,6 +183,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
             self?.controller.evaluate(reason: "poll")
         }
+        // Lets the system fire this together with other wake-ups instead of waking the CPU just for
+        // us. It only bounds how late the safety net may run (callbacks and power notifications are
+        // handled immediately), and 0.25s is small next to the grace and verify delays.
+        timer.tolerance = Self.pollTolerance
         RunLoop.main.add(timer, forMode: .common)
         recoveryTimer = timer
 
@@ -250,7 +274,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func menuWillOpen(_ menu: NSMenu) {
-        refresh()
+        refresh(force: true)
         updateLoginItemState()
     }
 
@@ -429,10 +453,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             ?? NSImage(systemSymbolName: "laptopcomputer", accessibilityDescription: "AutoBlackout")
     }
 
-    private func refresh() {
-        let status = controller.panelStatus
+    /// Brings the menu, icon and HUDs in line with the controller. Takes one snapshot and shares it.
+    /// Skips the work when nothing it shows changed, except while a HUD is up (and on the call that
+    /// takes it down): those also follow the screen configuration and a ticking countdown, so they
+    /// update on every call.
+    private func refresh(force: Bool = false) {
+        let snapshot = controller.currentSnapshot()
+        let status = controller.panelStatus(in: snapshot)
         let isVerifying = hostVerifier.isRunning
         let autoDisableDeadline = controller.autoDisableDeadline
+        let reverificationNotice = HostVerification.reverificationNotice
+        let hasUsableExternal = controller.hasUsableExternalDisplay(in: snapshot)
+        let inputs = RefreshInputs(
+            status: status,
+            isVerifying: isVerifying,
+            verifyProgressPhase: verifyProgressPhase,
+            needsLidCycle: controller.needsLidCycle,
+            isChanging: controller.isChanging,
+            isDisableSupported: controller.isDisableSupported,
+            hasUsableExternalDisplay: hasUsableExternal,
+            needsReverification: reverificationNotice != nil
+        )
+        let hudIsUp = status == .restoring || autoDisableDeadline != nil
+        if !force, !hudIsUp, !lastRefreshHadHUD, inputs == lastRefreshInputs { return }
+        lastRefreshInputs = inputs
+        lastRefreshHadHUD = hudIsUp
+
         if let progress = verifyProgressPhase {
             statusLabelItem.title = verifyStatusText(for: progress)
         } else if let autoDisableDeadline, status == .on {
@@ -459,8 +505,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         toggleItem.title = isOff ? L("Turn built-in display back ON") : L("Turn built-in display OFF")
         toggleItem.isEnabled = !isVerifying && status != .apiUnavailable && status != .notFound
             && !controller.isChanging
-            && (isOff || (controller.isDisableSupported && controller.hasUsableExternalDisplay))
-        let reverificationNotice = HostVerification.reverificationNotice
+            && (isOff || (controller.isDisableSupported && hasUsableExternal))
         verifyItem.isHidden = controller.isDisableSupported || !HostInfo.isAppleSilicon
         verifyItem.title = reverificationNotice != nil
             ? L("macOS was updated — re-verify to enable OFF…")
@@ -481,7 +526,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         restoreOverlay.update(
             isRestoring: status == .restoring,
             needsLidCycle: controller.needsLidCycle,
-            builtInDisplayID: controller.builtInPanelID()
+            builtInDisplayID: controller.builtInPanelID(in: snapshot)
         )
     }
 

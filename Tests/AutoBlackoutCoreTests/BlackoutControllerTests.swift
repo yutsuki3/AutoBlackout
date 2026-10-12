@@ -134,6 +134,29 @@ final class BlackoutControllerTests: XCTestCase {
         )
     }
 
+    func testSnapshotBasedLookupsMatchTheLiveOnes() {
+        let c = makeController()
+        c.launch()
+        XCTAssertEqual(c.panelStatus(in: c.currentSnapshot()), c.panelStatus)
+        XCTAssertFalse(c.hasUsableExternalDisplay(in: c.currentSnapshot()))
+
+        connectExternalAndAutoDisable(c)
+        let snapshot = c.currentSnapshot()
+        XCTAssertEqual(c.panelStatus(in: snapshot), .off)
+        XCTAssertEqual(c.panelStatus(in: snapshot), c.panelStatus)
+        XCTAssertTrue(c.hasUsableExternalDisplay(in: snapshot))
+        XCTAssertEqual(c.hasUsableExternalDisplay(in: snapshot), c.hasUsableExternalDisplay)
+    }
+
+    func testStatusFromASnapshotReportsRestoringWhileARestoreIsPending() {
+        let c = makeController()
+        c.launch()
+        connectExternalAndAutoDisable(c)
+        system.ignoreEnableRequests = true
+        c.requestRestore(trigger: "manual")
+        XCTAssertEqual(c.panelStatus(in: c.currentSnapshot()), .restoring)
+    }
+
     private func connectExternalAndAutoDisable(_ c: BlackoutController) {
         system.externals = [FakeDisplaySystem.external]
         c.evaluate(reason: "callback")

@@ -15,6 +15,11 @@ All notable changes to this project are documented here. The format is based on
   the external display is connected but blank (say, its input was switched to another computer)
   while the built-in display is off. The combination is shown on the menu's "Force-restore" item.
 
+### Changed
+- Lower idle power use: the 1-second safety-net poll can now fire together with other system
+  wake-ups (up to 0.25 s late), takes one display snapshot per refresh instead of several, and no
+  longer rebuilds the menu and icon when nothing changed. What gets switched, and when, is unchanged.
+
 ### Fixed
 - "Auto-OFF on external monitor connect" now remembers your choice across relaunches (and login
   items). It used to come back on every launch, so a user who had turned it off would have the
