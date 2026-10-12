@@ -20,51 +20,64 @@ let icnsURL = root.appendingPathComponent("Resources/AppIcon.icns")
 try? FileManager.default.removeItem(at: iconsetURL)
 try FileManager.default.createDirectory(at: iconsetURL, withIntermediateDirectories: true)
 
-func whiteSilhouette(of symbolName: String, pointSize: CGFloat) -> NSImage? {
-    guard let symbol = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil) else { return nil }
-    let config = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .medium)
-    let configured = symbol.withSymbolConfiguration(config) ?? symbol
-    let size = configured.size
-    let result = NSImage(size: size)
-    result.lockFocus()
-    NSColor.white.set()
-    NSRect(origin: .zero, size: size).fill()
-    configured.draw(at: .zero, from: .zero, operation: .destinationIn, fraction: 1)
-    result.unlockFocus()
-    return result
-}
-
 func render(size: Int) -> Data? {
     let canvas = NSImage(size: NSSize(width: size, height: size))
     canvas.lockFocus()
 
-    let rect = NSRect(x: 0, y: 0, width: size, height: size)
-    let radius = CGFloat(size) * 0.225
+    // macOS app icons keep ~10% transparent margin (824pt body on a 1024pt canvas) and
+    // a soft drop shadow; filling the whole canvas looks oversized in the Dock/Finder.
+    let canvasSize = CGFloat(size)
+    let bodySize = canvasSize * 824 / 1024
+    let inset = (canvasSize - bodySize) / 2
+    let rect = NSRect(x: inset, y: inset, width: bodySize, height: bodySize)
+    let radius = bodySize * 0.225
     let background = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
+
+    NSGraphicsContext.saveGraphicsState()
+    let shadow = NSShadow()
+    shadow.shadowColor = NSColor.black.withAlphaComponent(0.3)
+    shadow.shadowBlurRadius = canvasSize * 0.02
+    shadow.shadowOffset = NSSize(width: 0, height: -canvasSize * 0.01)
+    shadow.set()
+    NSColor.black.setFill()
+    background.fill()
+    NSGraphicsContext.restoreGraphicsState()
+
     let gradient = NSGradient(
         starting: NSColor(calibratedRed: 0.20, green: 0.22, blue: 0.27, alpha: 1),
         ending: NSColor(calibratedRed: 0.05, green: 0.06, blue: 0.08, alpha: 1)
     )
     gradient?.draw(in: background, angle: -90)
 
-    if let glyph = whiteSilhouette(of: "laptopcomputer", pointSize: CGFloat(size) * 0.5) {
-        let origin = NSPoint(
-            x: (CGFloat(size) - glyph.size.width) / 2,
-            y: (CGFloat(size) - glyph.size.height) / 2 + CGFloat(size) * 0.02
+    // Laptop (screen OFF) on the left, external display (screen ON) on the right.
+    // Coordinates are fractions of the icon body, origin top-left.
+    func shape(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat, _ r: CGFloat) -> NSBezierPath {
+        let rect = NSRect(
+            x: inset + x * bodySize,
+            y: inset + (1 - y - h) * bodySize,
+            width: w * bodySize,
+            height: h * bodySize
         )
-        glyph.draw(at: origin, from: .zero, operation: .sourceOver, fraction: 0.92)
+        return NSBezierPath(roundedRect: rect, xRadius: r * bodySize, yRadius: r * bodySize)
     }
+    let silver = NSColor(calibratedRed: 0.85, green: 0.86, blue: 0.88, alpha: 1)
 
-    // A diagonal bar signifying "blackout".
-    let barHeight = max(CGFloat(size) * 0.06, 2)
-    let barRect = NSRect(x: CGFloat(size) * 0.16, y: CGFloat(size) * 0.30, width: CGFloat(size) * 0.68, height: barHeight)
-    let transform = NSAffineTransform()
-    transform.translateX(by: CGFloat(size) / 2, yBy: CGFloat(size) / 2)
-    transform.rotate(byDegrees: -35)
-    transform.translateX(by: -CGFloat(size) / 2, yBy: -CGFloat(size) / 2)
-    transform.concat()
-    NSColor(calibratedRed: 0.95, green: 0.30, blue: 0.28, alpha: 0.95).setFill()
-    NSBezierPath(roundedRect: barRect, xRadius: barHeight / 2, yRadius: barHeight / 2).fill()
+    // External display.
+    silver.setFill()
+    shape(0.715, 0.57, 0.03, 0.09, 0).fill()
+    shape(0.64, 0.665, 0.18, 0.025, 0.0125).fill()
+    shape(0.52, 0.30, 0.42, 0.27, 0.025).fill()
+    NSGradient(
+        starting: NSColor(calibratedRed: 0.49, green: 0.77, blue: 1.0, alpha: 1),
+        ending: NSColor(calibratedRed: 0.22, green: 0.55, blue: 0.95, alpha: 1)
+    )?.draw(in: shape(0.535, 0.315, 0.39, 0.24, 0.012), angle: -90)
+
+    // Laptop with a black screen.
+    silver.setFill()
+    shape(0.08, 0.43, 0.36, 0.22, 0.025).fill()
+    shape(0.05, 0.65, 0.42, 0.045, 0.0225).fill()
+    NSColor.black.setFill()
+    shape(0.098, 0.448, 0.324, 0.184, 0.012).fill()
 
     canvas.unlockFocus()
 
