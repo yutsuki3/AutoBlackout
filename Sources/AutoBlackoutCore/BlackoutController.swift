@@ -167,21 +167,29 @@ public final class BlackoutController {
         return store.lastKnownBuiltInID ?? DisplayLogic.anyBuiltIn(in: snapshot)
     }
 
-    public var panelStatus: PanelStatus {
+    public var panelStatus: PanelStatus { panelStatus(in: system.snapshot()) }
+
+    /// Same as `panelStatus`, from a snapshot the caller already took. The UI reads several values per
+    /// refresh; sharing one snapshot saves the repeated CoreGraphics queries and keeps them consistent.
+    public func panelStatus(in snapshot: DisplaySnapshot) -> PanelStatus {
         guard isAPIAvailable else { return .apiUnavailable }
-        let snapshot = system.snapshot()
         guard let panel = builtInPanelID(in: snapshot) else { return .notFound }
         if restorePending { return .restoring }
         return DisplayLogic.isPanelEnabled(panel, in: snapshot) ? .on : .off
     }
+
+    /// A fresh snapshot, for callers that read several values and want to share it.
+    public func currentSnapshot() -> DisplaySnapshot { system.snapshot() }
 
     public var isBuiltInDisplayOff: Bool {
         let status = panelStatus
         return status == .off || status == .restoring
     }
 
-    public var hasUsableExternalDisplay: Bool {
-        !DisplayLogic.usableExternals(in: system.snapshot()).isEmpty
+    public var hasUsableExternalDisplay: Bool { hasUsableExternalDisplay(in: system.snapshot()) }
+
+    public func hasUsableExternalDisplay(in snapshot: DisplaySnapshot) -> Bool {
+        !DisplayLogic.usableExternals(in: snapshot).isEmpty
     }
 
     // MARK: - Entry points
