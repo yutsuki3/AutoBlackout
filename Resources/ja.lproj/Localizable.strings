@@ -44,7 +44,12 @@
 "Verifying this Mac: restoring shortly…" = "この Mac を検証中: まもなく復帰します…";
 "This Mac is now verified" = "この Mac は検証済みになりました";
 "The OFF feature is now available, and “Auto-OFF on external monitor connect” has been turned on." = "オフ機能が使えるようになり、「外部モニタ接続時に自動でオフにする」がオンになりました。";
+"The OFF feature is now available. “Auto-OFF on external monitor connect” stays off, as you set it." = "オフ機能が使えるようになりました。「外部モニタ接続時に自動でオフにする」は設定どおりオフのままです。";
 "Verification didn't run" = "検証は実行されませんでした";
 "The built-in display didn't turn off, so nothing was changed. Check “Show Logs” for details." = "内蔵ディスプレイがオフになりませんでした。何も変更されていません。詳細は「ログを表示」で確認してください。";
 "Verification didn't finish" = "検証が完了しませんでした";
 "The built-in display hasn't come back yet. AutoBlackout keeps retrying in the background — try closing the lid, waiting a few seconds, then opening it. This Mac stays unverified until the restore succeeds." = "内蔵ディスプレイがまだ復帰していません。AutoBlackout はバックグラウンドで再試行を続けます — 蓋を閉じて数秒待ってから開いてみてください。復帰に成功するまで、この Mac は未検証のままです。";
+"The built-in display turns off in %d s" = "内蔵ディスプレイを%d秒後にオフにします";
+"Keep It On" = "オンのままにする";
+"Keep built-in display ON" = "内蔵ディスプレイをオンのままにする";
+"Built-in display: turning OFF in %d s…" = "内蔵ディスプレイ: %d秒後にオフ…";

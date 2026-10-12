@@ -13,7 +13,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         system: displaySystem,
         store: stateStore,
         scheduler: MainQueueScheduler(),
-        logger: logger
+        logger: logger,
+        autoDisableDelay: BlackoutController.autoDisableCountdown
     )
     private lazy var hostVerifier = InAppHostVerifier(
         controller: controller,
@@ -24,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let monitor = DisplayMonitor()
     private let restoreOverlay = RestoreOverlayController()
     private var restoreHotKey: GlobalHotKey?
+    private let countdownOverlay = AutoOffCountdownOverlayController()
     private var recoveryTimer: Timer?
     private var terminationTimer: Timer?
     /// Set while `hostVerifier` is in its "disabling" or "holding" phase, so `refresh()` can show
@@ -42,6 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var loginItemItem: NSMenuItem!
     private var statusLabelItem: NSMenuItem!
     private var verifyItem: NSMenuItem!
+    private var keepOnItem: NSMenuItem!
 
     private static let verificationDocsURL = URL(
         string: "https://github.com/yutsuki3/AutoBlackout/blob/main/docs/HOST_VERIFICATION.md#verifying-the-restore-procedure-on-your-mac"
@@ -58,6 +61,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusLabelItem = NSMenuItem(title: L("Built-in display: ON"), action: nil, keyEquivalent: "")
         statusLabelItem.isEnabled = false
         menu.addItem(statusLabelItem)
+
+        // Shown only while auto-OFF is counting down; same action as the HUD's "Keep It On".
+        keepOnItem = NSMenuItem(
+            title: L("Keep built-in display ON"),
+            action: #selector(cancelAutoDisable),
+            keyEquivalent: ""
+        )
+        keepOnItem.target = self
+        keepOnItem.isHidden = true
+        menu.addItem(keepOnItem)
 
         // Shown whenever this Mac model + macOS build isn't verified to restore the display
         // correctly (never verified, or a macOS update invalidated an earlier verification).
@@ -97,7 +110,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             keyEquivalent: ""
         )
         autoModeItem.target = self
-        autoModeItem.state = .on
+        // Applied before `controller.launch()`, so a user who turned auto-OFF off never sees it fire
+        // after a relaunch.
+        controller.isAutoModeEnabled = stateStore.autoModePreference ?? true
+        autoModeItem.state = controller.isAutoModeEnabled ? .on : .off
         menu.addItem(autoModeItem)
         if !controller.isDisableSupported {
             if let notice = HostVerification.reverificationNotice {
@@ -126,6 +142,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.menu = menu
 
         controller.onStateChange = { [weak self] in self?.refresh() }
+        countdownOverlay.onCancel = { [weak self] in self?.cancelAutoDisable() }
         hostVerifier.onPhaseChange = { [weak self] phase in self?.handleVerifyPhaseChange(phase) }
 
         monitor.onChange = { [weak self] displayID, flags in
@@ -240,6 +257,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         controller.requestRestore(trigger: "shortcut force-restore")
     }
 
+    @objc private func cancelAutoDisable() {
+        controller.cancelPendingAutoDisable()
+    }
+
     @objc private func forceRestore() {
         controller.requestRestore(trigger: "menu force-restore")
     }
@@ -247,6 +268,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func toggleAutoMode() {
         controller.isAutoModeEnabled.toggle()
         autoModeItem.state = controller.isAutoModeEnabled ? .on : .off
+        stateStore.autoModePreference = controller.isAutoModeEnabled
+        logger.log("auto mode set to \(controller.isAutoModeEnabled) from the menu")
     }
 
     @objc private func verifyThisMac() {
@@ -302,8 +325,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             verifyProgressPhase = nil
         case .succeeded:
             verifyProgressPhase = nil
-            controller.isAutoModeEnabled = true
-            autoModeItem.state = .on
+            // Re-verifying after a macOS update must not turn back on an auto-OFF the user had
+            // switched off; only a Mac with no saved choice gets it turned on.
+            controller.isAutoModeEnabled = stateStore.autoModePreference ?? true
+            autoModeItem.state = controller.isAutoModeEnabled ? .on : .off
         case .failed:
             verifyProgressPhase = nil
         }
@@ -328,8 +353,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func showVerifySucceededAlert() {
         let alert = NSAlert()
         alert.messageText = L("This Mac is now verified")
-        // swiftlint:disable:next line_length
-        alert.informativeText = L("The OFF feature is now available, and “Auto-OFF on external monitor connect” has been turned on.")
+        let autoOnText = L("The OFF feature is now available, and “Auto-OFF on external monitor connect” has been turned on.")
+        let autoOffText = L("The OFF feature is now available. “Auto-OFF on external monitor connect” stays off, as you set it.")
+        alert.informativeText = controller.isAutoModeEnabled ? autoOnText : autoOffText
         alert.addButton(withTitle: L("OK"))
         NSApp.activate(ignoringOtherApps: true)
         alert.runModal()
@@ -399,8 +425,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func refresh() {
         let status = controller.panelStatus
         let isVerifying = hostVerifier.isRunning
+        let autoDisableDeadline = controller.autoDisableDeadline
         if let progress = verifyProgressPhase {
             statusLabelItem.title = verifyStatusText(for: progress)
+        } else if let autoDisableDeadline, status == .on {
+            let seconds = max(1, Int(autoDisableDeadline.timeIntervalSinceNow.rounded(.up)))
+            statusLabelItem.title = String(format: L("Built-in display: turning OFF in %d s…"), seconds)
         } else {
             switch status {
             case .apiUnavailable:
@@ -439,6 +469,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         restoreItem.isEnabled = !isVerifying && status != .apiUnavailable && status != .notFound
         autoModeItem.isEnabled = !isVerifying && controller.isDisableSupported
 
+        keepOnItem.isHidden = autoDisableDeadline == nil
+        countdownOverlay.update(deadline: autoDisableDeadline)
         restoreOverlay.update(
             isRestoring: status == .restoring,
             needsLidCycle: controller.needsLidCycle,
