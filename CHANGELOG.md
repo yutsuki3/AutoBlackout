@@ -16,6 +16,10 @@ All notable changes to this project are documented here. The format is based on
   while the built-in display is off. The combination is shown on the menu's "Force-restore" item.
 
 ### Fixed
+- `killall AutoBlackout` (SIGTERM), SIGHUP and SIGINT now go through the normal quit: the built-in
+  display is restored and confirmed before the app exits, and the quit is cancelled if it can't be.
+  They used to kill the app on the spot, which left the display off with nothing to restore it.
+  (`kill -9` still can't be caught; relaunch the app or run `--restore`.)
 - "Auto-OFF on external monitor connect" now remembers your choice across relaunches (and login
   items). It used to come back on every launch, so a user who had turned it off would have the
   built-in display switched off again the next time a monitor connected. Re-verifying after a macOS
