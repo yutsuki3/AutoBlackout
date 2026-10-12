@@ -44,6 +44,7 @@
 "Verifying this Mac: restoring shortly…" = "この Mac を検証中: まもなく復帰します…";
 "This Mac is now verified" = "この Mac は検証済みになりました";
 "The OFF feature is now available, and “Auto-OFF on external monitor connect” has been turned on." = "オフ機能が使えるようになり、「外部モニタ接続時に自動でオフにする」がオンになりました。";
+"The OFF feature is now available. “Auto-OFF on external monitor connect” stays off, as you set it." = "オフ機能が使えるようになりました。「外部モニタ接続時に自動でオフにする」は設定どおりオフのままです。";
 "Verification didn't run" = "検証は実行されませんでした";
 "The built-in display didn't turn off, so nothing was changed. Check “Show Logs” for details." = "内蔵ディスプレイがオフになりませんでした。何も変更されていません。詳細は「ログを表示」で確認してください。";
 "Verification didn't finish" = "検証が完了しませんでした";
