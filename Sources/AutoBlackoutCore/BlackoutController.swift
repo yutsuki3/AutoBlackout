@@ -68,6 +68,13 @@ public final class BlackoutController {
     /// reconfigure and then fails with 1014, which also delays waking the screens (confirmed on
     /// real hardware).
     public static let powerCycleSettleDelay: TimeInterval = 6
+    /// How long the app counts down, with a chance to cancel, between a newly connected external
+    /// display and auto-OFF. Only delays turning the panel OFF; a restore is never delayed by it.
+    public static let autoDisableCountdown: TimeInterval = 5
+
+    /// When the pending auto-OFF will fire. `nil` when no countdown is running. The UI shows the
+    /// remaining time and offers `cancelPendingAutoDisable()`.
+    public private(set) var autoDisableDeadline: Date?
 
     private let system: DisplaySystem
     private let store: DisplayStateStore
@@ -79,6 +86,8 @@ public final class BlackoutController {
     /// real hardware); restoring immediately would cause a flash of the built-in panel turning on
     /// and auto-OFF turning it right back off, repeatedly.
     private let externalLossGrace: TimeInterval
+    /// The countdown before auto-OFF (0 = turn OFF as soon as a new external display is usable).
+    private let autoDisableDelay: TimeInterval
     private let now: () -> Date
     /// When the external display was last seen missing. `nil` while it's visible.
     private var externalLostAt: Date?
@@ -105,7 +114,9 @@ public final class BlackoutController {
     private var sleepResumeDeadline: Date?
     /// A newly connected external display is waiting for auto-OFF. If it was asleep when it
     /// connected, this waits until it wakes.
-    private var autoDisablePending = false
+    private var autoDisablePending = false {
+        didSet { if !autoDisablePending { autoDisableDeadline = nil } }
+    }
     private var restoreAttempts = 0
     private var powerCycles = 0
     private var failuresSincePowerCycle = 0
@@ -124,6 +135,7 @@ public final class BlackoutController {
         logger: EventLogger,
         verifyDelay: TimeInterval = 1.0,
         externalLossGrace: TimeInterval = 3.0,
+        autoDisableDelay: TimeInterval = 0,
         now: @escaping () -> Date = Date.init
     ) {
         self.system = system
@@ -132,6 +144,7 @@ public final class BlackoutController {
         self.logger = logger
         self.verifyDelay = verifyDelay
         self.externalLossGrace = externalLossGrace
+        self.autoDisableDelay = autoDisableDelay
         self.now = now
         self.managedDisplay = store.managedDisplayID
     }
@@ -285,14 +298,42 @@ public final class BlackoutController {
             clearManagedState()
         }
 
-        if isAutoModeEnabled, autoDisablePending, enabled, !usable.isEmpty {
-            autoDisablePending = false
-            logger.log("auto: external display connected \(sorted(usable))")
-            disable(panel, usable: usable, trigger: "auto")
-            return
-        }
+        if handleAutoDisable(panel, enabled: enabled, usable: usable, reason: reason) { return }
 
         onStateChange?()
+    }
+
+    /// Runs the auto-OFF countdown for a newly connected external display, and turns the panel off
+    /// once it ends. - Returns: whether it handled this evaluate (and already notified the UI).
+    private func handleAutoDisable(
+        _ panel: CGDirectDisplayID, enabled: Bool, usable: Set<CGDirectDisplayID>, reason: String
+    ) -> Bool {
+        guard isAutoModeEnabled, autoDisablePending, enabled, !usable.isEmpty else {
+            if autoDisableDeadline != nil {
+                // The external display went to sleep or the panel changed mid-countdown. Start over
+                // when it's usable again, so the user always gets the full countdown.
+                logger.log("auto: countdown reset (\(reason)); external display not usable or panel not on")
+                autoDisableDeadline = nil
+            }
+            return false
+        }
+        if autoDisableDelay > 0, autoDisableDeadline == nil {
+            autoDisableDeadline = now().addingTimeInterval(autoDisableDelay)
+            logger.log("auto: external display connected \(sorted(usable)); "
+                + "turning panel off in \(autoDisableDelay)s unless cancelled")
+            // Make sure evaluate runs again when the countdown ends, even with no poll.
+            scheduler.schedule(after: autoDisableDelay) { [weak self] in
+                self?.evaluate(reason: "auto-off-countdown")
+            }
+        }
+        if let deadline = autoDisableDeadline, now() < deadline {
+            onStateChange?()
+            return true
+        }
+        autoDisablePending = false
+        logger.log("auto: external display connected \(sorted(usable))")
+        disable(panel, usable: usable, trigger: "auto")
+        return true
     }
 
     public enum PowerTransition {
@@ -356,6 +397,15 @@ public final class BlackoutController {
             + "managed=\(describe(managedDisplay)) pending=\(restorePending) " + describe(snapshot))
     }
 
+    /// "Keep it on": cancels the auto-OFF countdown for this connection. The next new connection
+    /// counts down again.
+    public func cancelPendingAutoDisable() {
+        guard autoDisablePending else { return }
+        logger.log("auto: countdown cancelled by user")
+        autoDisablePending = false
+        onStateChange?()
+    }
+
     public func toggleManually() {
         if isBuiltInDisplayOff {
             requestRestore(trigger: "manual")
@@ -372,6 +422,7 @@ public final class BlackoutController {
             return
         }
         guard DisplayLogic.isPanelEnabled(panel, in: snapshot) else { return }
+        autoDisablePending = false
         disable(panel, usable: DisplayLogic.usableExternals(in: snapshot), trigger: trigger)
     }
 

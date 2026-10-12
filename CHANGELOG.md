@@ -5,6 +5,13 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- Auto-OFF now counts down for 5 seconds before turning the built-in display off, with a HUD on
+  every screen ("The built-in display turns off in 5 s" + "Keep It On") and a matching menu item.
+  Choosing "Keep It On" keeps the built-in display on for as long as that monitor stays connected;
+  the next new connection counts down again. Unplugging the monitor, or it going to sleep, during
+  the countdown cancels or restarts it. Restoring the display is never delayed.
+
 ### Fixed
 - "Auto-OFF on external monitor connect" now remembers your choice across relaunches (and login
   items). It used to come back on every launch, so a user who had turned it off would have the
