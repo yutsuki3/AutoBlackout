@@ -11,6 +11,9 @@ All notable changes to this project are documented here. The format is based on
   Choosing "Keep It On" keeps the built-in display on for as long as that monitor stays connected;
   the next new connection counts down again. Unplugging the monitor, or it going to sleep, during
   the countdown cancels or restarts it. Restoring the display is never delayed.
+- ⌃⌥⌘R restores the built-in display from anywhere, with no screen needed to open the menu. For when
+  the external display is connected but blank (say, its input was switched to another computer)
+  while the built-in display is off. The combination is shown on the menu's "Force-restore" item.
 
 ### Fixed
 - "Auto-OFF on external monitor connect" now remembers your choice across relaunches (and login

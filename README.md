@@ -118,6 +118,7 @@ From the menu bar:
   On success this Mac is remembered as verified and OFF becomes available immediately, no relaunch
   needed.
 - **Force-restore built-in display** — always sends a restore request, regardless of the displayed status.
+  Also available as **⌃⌥⌘R** from any app, for when no screen shows the menu.
 - **Auto-OFF on external monitor connect** — toggles the automatic behavior. Your choice is remembered
   across relaunches (on by default). Before turning the built-in display off it counts down for
   5 seconds with a "Keep It On" button on every screen (also in the menu), so plugging in a monitor
