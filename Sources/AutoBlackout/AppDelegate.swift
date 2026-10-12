@@ -33,10 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.image = NSImage(
-            systemSymbolName: "laptopcomputer",
-            accessibilityDescription: "AutoBlackout"
-        )
+        updateStatusItemIcon(isOff: false)
 
         let menu = NSMenu()
         menu.autoenablesItems = false
@@ -250,6 +247,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         loginItemItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
     }
 
+    /// Shows a slashed laptop in the menu bar while the built-in display is OFF (or restoring).
+    private func updateStatusItemIcon(isOff: Bool) {
+        let symbolName = isOff ? "laptopcomputer.slash" : "laptopcomputer"
+        statusItem.button?.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: "AutoBlackout")
+            ?? NSImage(systemSymbolName: "laptopcomputer", accessibilityDescription: "AutoBlackout")
+    }
+
     private func refresh() {
         let status = controller.panelStatus
         switch status {
@@ -267,6 +271,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 : L("Built-in display: restoring…")
         }
         let isOff = status == .off || status == .restoring
+        updateStatusItemIcon(isOff: isOff)
         toggleItem.title = isOff ? L("Turn built-in display back ON") : L("Turn built-in display OFF")
         toggleItem.isEnabled = status != .apiUnavailable && status != .notFound
             && !controller.isChanging
